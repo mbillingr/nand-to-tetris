@@ -1,7 +1,7 @@
-use Bool::*;
+use Bit::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum Bool {
+pub enum Bit {
     O,
     I,
 }
@@ -9,10 +9,10 @@ pub enum Bool {
 pub trait Logic {
     fn nand(a: &Self, b: &Self) -> Self;
 
-    fn mux(a: &Self, b: &Self, sel: Bool) -> Self;
+    fn mux(a: &Self, b: &Self, sel: Bit) -> Self;
 }
 
-impl Logic for Bool {
+impl Logic for Bit {
     fn nand(a: &Self, b: &Self) -> Self {
         match (a, b) {
             (I, I) => O,
@@ -20,7 +20,7 @@ impl Logic for Bool {
         }
     }
 
-    fn mux(a: &Self, b: &Self, sel: Bool) -> Self {
+    fn mux(a: &Self, b: &Self, sel: Bit) -> Self {
         nand(&nand(&sel, b), &nand(&not(&sel), a))
     }
 }
@@ -30,7 +30,7 @@ impl<T: Logic> Logic for Vec<T> {
         a.iter().zip(b).map(|(ai, bi)| T::nand(ai, bi)).collect()
     }
 
-    fn mux(a: &Self, b: &Self, sel: Bool) -> Self {
+    fn mux(a: &Self, b: &Self, sel: Bit) -> Self {
         a.iter()
             .zip(b)
             .map(|(ai, bi)| T::mux(ai, bi, sel))
@@ -58,7 +58,7 @@ pub fn xor<T: Logic>(a: &T, b: &T) -> T {
     nand(&nand(a, &not(b)), &nand(&not(a), b))
 }
 
-pub fn mux<T: Logic>(a: &T, b: &T, sel: Bool) -> T {
+pub fn mux<T: Logic>(a: &T, b: &T, sel: Bit) -> T {
     T::mux(a, b, sel)
 }
 
@@ -68,21 +68,21 @@ pub fn demux<T: Logic>(i: &T, sel: &T) -> (T, T) {
     (a, b)
 }
 
-pub fn multi_or(input: &[Bool]) -> Bool {
+pub fn multi_or(input: &[Bit]) -> Bit {
     input.iter().fold(O, |x, y| or(&x, y))
 }
 
-pub fn multi_mux<T: Logic + Clone>(inputs: &[T], sel: &[Bool]) -> T {
+pub fn multi_mux<T: Logic + Clone>(inputs: &[T], sel: &[Bit]) -> T {
     inputs[index(sel)].clone()
 }
 
-pub fn multi_demux(input: Bool, sel: &[Bool]) -> Vec<Bool> {
+pub fn multi_demux(input: Bit, sel: &[Bit]) -> Vec<Bit> {
     let mut output = vec![O; 2usize.pow(sel.len() as u32)];
     output[index(sel)] = input;
     output
 }
 
-fn index(sel: &[Bool]) -> usize {
+fn index(sel: &[Bit]) -> usize {
     let mut idx = 0;
     for s in sel.iter() {
         idx *= 2;
