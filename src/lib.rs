@@ -1,3 +1,5 @@
+pub mod chapter01_boolean_logic;
+
 #[cfg(test)]
 mod tests {
     #[test]
