@@ -68,6 +68,32 @@ pub fn demux<T: Logic>(i: &T, sel: &T) -> (T, T) {
     (a, b)
 }
 
+pub fn multi_or(input: &[Bool]) -> Bool {
+    input.iter().fold(O, |x, y| or(&x, y))
+}
+
+pub fn multi_mux<T: Logic + Clone>(inputs: &[T], sel: &[Bool]) -> T {
+    inputs[index(sel)].clone()
+}
+
+pub fn multi_demux(input: Bool, sel: &[Bool]) -> Vec<Bool> {
+    let mut output = vec![O; 2usize.pow(sel.len() as u32)];
+    output[index(sel)] = input;
+    output
+}
+
+fn index(sel: &[Bool]) -> usize {
+    let mut idx = 0;
+    for s in sel.iter() {
+        idx *= 2;
+        match s {
+            I => idx += 1,
+            O => {}
+        }
+    }
+    idx
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,5 +182,170 @@ mod tests {
             mux(&vec![O, O, I, I], &vec![O, I, O, I], I),
             vec![O, I, O, I]
         );
+    }
+
+    #[test]
+    fn multi_way_or() {
+        assert_eq!(multi_or(&[O, O, O]), O);
+    }
+
+    #[test]
+    fn mux_4way_nbit() {
+        assert_eq!(
+            multi_mux(
+                &[
+                    vec![I, O, O, O],
+                    vec![O, I, O, O],
+                    vec![O, O, I, O],
+                    vec![O, O, O, I]
+                ],
+                &[O, O]
+            ),
+            vec![I, O, O, O]
+        );
+        assert_eq!(
+            multi_mux(
+                &[
+                    vec![I, O, O, O],
+                    vec![O, I, O, O],
+                    vec![O, O, I, O],
+                    vec![O, O, O, I]
+                ],
+                &[O, I]
+            ),
+            vec![O, I, O, O]
+        );
+        assert_eq!(
+            multi_mux(
+                &[
+                    vec![I, O, O, O],
+                    vec![O, I, O, O],
+                    vec![O, O, I, O],
+                    vec![O, O, O, I]
+                ],
+                &[I, O]
+            ),
+            vec![O, O, I, O]
+        );
+        assert_eq!(
+            multi_mux(
+                &[
+                    vec![I, O, O, O],
+                    vec![O, I, O, O],
+                    vec![O, O, I, O],
+                    vec![O, O, O, I]
+                ],
+                &[I, I]
+            ),
+            vec![O, O, O, I]
+        );
+    }
+
+    #[test]
+    fn mux_8way_nbit() {
+        assert_eq!(
+            multi_mux(
+                &[
+                    vec![I, O, O, O, O, O, O, O],
+                    vec![O, I, O, O, O, O, O, O],
+                    vec![O, O, I, O, O, O, O, O],
+                    vec![O, O, O, I, O, O, O, O],
+                    vec![O, O, O, O, I, O, O, O],
+                    vec![O, O, O, O, O, I, O, O],
+                    vec![O, O, O, O, O, O, I, O],
+                    vec![O, O, O, O, O, O, O, I]
+                ],
+                &[O, O, O]
+            ),
+            vec![I, O, O, O, O, O, O, O],
+        );
+        assert_eq!(
+            multi_mux(
+                &[
+                    vec![I, O, O, O, O, O, O, O],
+                    vec![O, I, O, O, O, O, O, O],
+                    vec![O, O, I, O, O, O, O, O],
+                    vec![O, O, O, I, O, O, O, O],
+                    vec![O, O, O, O, I, O, O, O],
+                    vec![O, O, O, O, O, I, O, O],
+                    vec![O, O, O, O, O, O, I, O],
+                    vec![O, O, O, O, O, O, O, I]
+                ],
+                &[O, O, I]
+            ),
+            vec![O, I, O, O, O, O, O, O],
+        );
+        assert_eq!(
+            multi_mux(
+                &[
+                    vec![I, O, O, O, O, O, O, O],
+                    vec![O, I, O, O, O, O, O, O],
+                    vec![O, O, I, O, O, O, O, O],
+                    vec![O, O, O, I, O, O, O, O],
+                    vec![O, O, O, O, I, O, O, O],
+                    vec![O, O, O, O, O, I, O, O],
+                    vec![O, O, O, O, O, O, I, O],
+                    vec![O, O, O, O, O, O, O, I]
+                ],
+                &[O, I, O]
+            ),
+            vec![O, O, I, O, O, O, O, O],
+        );
+        assert_eq!(
+            multi_mux(
+                &[
+                    vec![I, O, O, O, O, O, O, O],
+                    vec![O, I, O, O, O, O, O, O],
+                    vec![O, O, I, O, O, O, O, O],
+                    vec![O, O, O, I, O, O, O, O],
+                    vec![O, O, O, O, I, O, O, O],
+                    vec![O, O, O, O, O, I, O, O],
+                    vec![O, O, O, O, O, O, I, O],
+                    vec![O, O, O, O, O, O, O, I]
+                ],
+                &[I, O, O]
+            ),
+            vec![O, O, O, O, I, O, O, O],
+        );
+        assert_eq!(
+            multi_mux(
+                &[
+                    vec![I, O, O, O, O, O, O, O],
+                    vec![O, I, O, O, O, O, O, O],
+                    vec![O, O, I, O, O, O, O, O],
+                    vec![O, O, O, I, O, O, O, O],
+                    vec![O, O, O, O, I, O, O, O],
+                    vec![O, O, O, O, O, I, O, O],
+                    vec![O, O, O, O, O, O, I, O],
+                    vec![O, O, O, O, O, O, O, I]
+                ],
+                &[I, I, I]
+            ),
+            vec![O, O, O, O, O, O, O, I],
+        );
+    }
+
+    #[test]
+    fn demux_4way_1bit() {
+        assert_eq!(multi_demux(O, &[O, O]), vec![O, O, O, O]);
+        assert_eq!(multi_demux(O, &[I, I]), vec![O, O, O, O]);
+        assert_eq!(multi_demux(I, &[O, O]), vec![I, O, O, O]);
+        assert_eq!(multi_demux(I, &[O, I]), vec![O, I, O, O]);
+        assert_eq!(multi_demux(I, &[I, O]), vec![O, O, I, O]);
+        assert_eq!(multi_demux(I, &[I, I]), vec![O, O, O, I]);
+    }
+
+    #[test]
+    fn demux_8way_1bit() {
+        assert_eq!(multi_demux(O, &[O, O, O]), vec![O, O, O, O, O, O, O, O]);
+        assert_eq!(multi_demux(O, &[I, I, I]), vec![O, O, O, O, O, O, O, O]);
+        assert_eq!(multi_demux(I, &[O, O, O]), vec![I, O, O, O, O, O, O, O]);
+        assert_eq!(multi_demux(I, &[O, O, I]), vec![O, I, O, O, O, O, O, O]);
+        assert_eq!(multi_demux(I, &[O, I, O]), vec![O, O, I, O, O, O, O, O]);
+        assert_eq!(multi_demux(I, &[O, I, I]), vec![O, O, O, I, O, O, O, O]);
+        assert_eq!(multi_demux(I, &[I, O, O]), vec![O, O, O, O, I, O, O, O]);
+        assert_eq!(multi_demux(I, &[I, O, I]), vec![O, O, O, O, O, I, O, O]);
+        assert_eq!(multi_demux(I, &[I, I, O]), vec![O, O, O, O, O, O, I, O]);
+        assert_eq!(multi_demux(I, &[I, I, I]), vec![O, O, O, O, O, O, O, I]);
     }
 }
