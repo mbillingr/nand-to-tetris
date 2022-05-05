@@ -8,6 +8,8 @@ pub enum Bool {
 
 pub trait Logic {
     fn nand(a: &Self, b: &Self) -> Self;
+
+    fn mux(a: &Self, b: &Self, sel: Bool) -> Self;
 }
 
 impl Logic for Bool {
@@ -16,6 +18,23 @@ impl Logic for Bool {
             (I, I) => O,
             _ => I,
         }
+    }
+
+    fn mux(a: &Self, b: &Self, sel: Bool) -> Self {
+        nand(&nand(&sel, b), &nand(&not(&sel), a))
+    }
+}
+
+impl<T: Logic> Logic for Vec<T> {
+    fn nand(a: &Self, b: &Self) -> Self {
+        a.iter().zip(b).map(|(ai, bi)| T::nand(ai, bi)).collect()
+    }
+
+    fn mux(a: &Self, b: &Self, sel: Bool) -> Self {
+        a.iter()
+            .zip(b)
+            .map(|(ai, bi)| T::mux(ai, bi, sel))
+            .collect()
     }
 }
 
@@ -39,8 +58,8 @@ pub fn xor<T: Logic>(a: &T, b: &T) -> T {
     nand(&nand(a, &not(b)), &nand(&not(a), b))
 }
 
-pub fn mux<T: Logic>(a: &T, b: &T, sel: &T) -> T {
-    nand(&nand(sel, b), &nand(&not(sel), a))
+pub fn mux<T: Logic>(a: &T, b: &T, sel: Bool) -> T {
+    T::mux(a, b, sel)
 }
 
 pub fn demux<T: Logic>(i: &T, sel: &T) -> (T, T) {
@@ -93,14 +112,14 @@ mod tests {
 
     #[test]
     fn mux_gate() {
-        assert_eq!(mux(&O, &O, &O), O);
-        assert_eq!(mux(&O, &I, &O), O);
-        assert_eq!(mux(&I, &O, &O), I);
-        assert_eq!(mux(&I, &I, &O), I);
-        assert_eq!(mux(&O, &O, &I), O);
-        assert_eq!(mux(&O, &I, &I), I);
-        assert_eq!(mux(&I, &O, &I), O);
-        assert_eq!(mux(&I, &I, &I), I);
+        assert_eq!(mux(&O, &O, O), O);
+        assert_eq!(mux(&O, &I, O), O);
+        assert_eq!(mux(&I, &O, O), I);
+        assert_eq!(mux(&I, &I, O), I);
+        assert_eq!(mux(&O, &O, I), O);
+        assert_eq!(mux(&O, &I, I), I);
+        assert_eq!(mux(&I, &O, I), O);
+        assert_eq!(mux(&I, &I, I), I);
     }
 
     #[test]
@@ -111,8 +130,31 @@ mod tests {
         assert_eq!(demux(&I, &I), (O, I));
     }
 
-    /*#[test]
+    #[test]
     fn multi_bit_not() {
-        assert_eq!()
-    }*/
+        assert_eq!(not(&vec![O; 16]), vec![I; 16]);
+        assert_eq!(not(&vec![I; 16]), vec![O; 16]);
+    }
+
+    #[test]
+    fn multi_bit_and() {
+        assert_eq!(and(&vec![O, O, I, I], &vec![O, I, O, I]), vec![O, O, O, I]);
+    }
+
+    #[test]
+    fn multi_bit_or() {
+        assert_eq!(or(&vec![O, O, I, I], &vec![O, I, O, I]), vec![O, I, I, I]);
+    }
+
+    #[test]
+    fn multi_bit_mux() {
+        assert_eq!(
+            mux(&vec![O, O, I, I], &vec![O, I, O, I], O),
+            vec![O, O, I, I]
+        );
+        assert_eq!(
+            mux(&vec![O, O, I, I], &vec![O, I, O, I], I),
+            vec![O, I, O, I]
+        );
+    }
 }
