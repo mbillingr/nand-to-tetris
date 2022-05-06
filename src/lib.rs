@@ -1,4 +1,5 @@
 pub mod chapter01_boolean_logic;
+pub mod chapter02_boolean_arithmetic;
 
 #[cfg(test)]
 mod tests {
