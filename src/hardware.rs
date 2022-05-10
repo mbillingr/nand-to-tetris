@@ -44,6 +44,12 @@ impl<T: Copy> Wire<T> {
     }
 }
 
+impl<T> Debug for Wire<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Wire({:p})", Arc::as_ptr(&self.0))
+    }
+}
+
 #[derive(Debug)]
 pub enum SystemBuildError {
     DeviceLoop(Box<str>),
@@ -52,6 +58,12 @@ pub enum SystemBuildError {
 pub struct SystemBuilder<T> {
     devices: Vec<Device<T>>,
     clock_handlers: Vec<Arc<dyn ClockHandler>>,
+}
+
+impl<T> Debug for SystemBuilder<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SystemBuilder {{ devices: {:?} }}", self.devices)
+    }
 }
 
 impl<T> SystemBuilder<T> {
@@ -143,6 +155,12 @@ pub struct Device<T> {
     function: Arc<dyn Fn(&[T], &mut Vec<T>)>,
 }
 
+impl<T> Debug for Device<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {:?} -> {:?}", self.name, self.inputs, self.outputs)
+    }
+}
+
 impl<T> Device<T> {
     fn depends_on(&self, other: &Self) -> bool {
         for inp in &self.inputs {
@@ -232,7 +250,7 @@ pub struct System<T> {
 
 impl<T> Debug for System<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<System with {} devices", self.devices.len())
+        write!(f, "<System with {} devices>", self.devices.len())
     }
 }
 
@@ -283,6 +301,38 @@ impl<T: Copy> ClockHandler for MemoryCell<T> {
     fn cycle(&self) {
         self.output_buffer.set(self.input_buffer.get());
     }
+}
+
+#[macro_export]
+macro_rules! let_wires {
+    ($($wire:ident),*) => {
+        $(let $wire = Wire::new(Default::default());)*
+    }
+}
+
+#[macro_export]
+macro_rules! system {
+    (
+        $sys:ident
+        wires { $($wire:ident),* }
+        gates { $($gate:ident($name:expr, $($args:ident),*);)* }
+        body { $($checks:tt)* }
+    ) => {
+        let_wires!($($wire),*);
+        let mut sb = SystemBuilder::new();
+        $($gate(&mut sb, $name, $(&$args),*);)*
+        let $sys = sb.build().unwrap();
+        $($checks)*
+    }
+}
+
+#[macro_export]
+macro_rules! assert_sim {
+    ($sys: expr, $($i:ident=$v:expr),* => $($o:ident=$e:expr),*) => {
+        $($i.set($v);)*
+        $sys.simulate();
+        $(assert_eq!($o.value(), $e);)*
+    };
 }
 
 #[cfg(test)]

@@ -1,9 +1,16 @@
+use crate::hardware::{SystemBuilder, Wire};
 use Bit::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum Bit {
     O,
     I,
+}
+
+impl Default for Bit {
+    fn default() -> Self {
+        Bit::O
+    }
 }
 
 pub trait Logic {
@@ -36,6 +43,105 @@ impl<T: Logic> Logic for Vec<T> {
             .map(|(ai, bi)| T::mux(ai, bi, sel))
             .collect()
     }
+}
+
+pub fn make_nand(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<Box<str>>,
+    a: &Wire<Bit>,
+    b: &Wire<Bit>,
+    o: &Wire<Bit>,
+) {
+    sb.add_device(name, &[&a, &b], &[&o], move |inp, out| {
+        out.push(match inp {
+            [I, I] => O,
+            [O, O] | [O, I] | [I, O] => I,
+            _ => unreachable!(),
+        });
+    })
+}
+
+pub fn make_not(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &Wire<Bit>,
+    o: &Wire<Bit>,
+) {
+    make_nand(sb, name.into() + ".nand", a, a, o);
+}
+
+pub fn make_and(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &Wire<Bit>,
+    b: &Wire<Bit>,
+    o: &Wire<Bit>,
+) {
+    let name = name.into();
+    let_wires!(no);
+    make_nand(sb, name.clone() + ".nand", a, b, &no);
+    make_not(sb, name + ".not", &no, o);
+}
+
+pub fn make_or(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &Wire<Bit>,
+    b: &Wire<Bit>,
+    o: &Wire<Bit>,
+) {
+    let name = name.into();
+    let_wires!(na, nb);
+    make_not(sb, name.clone() + ".notA", a, &na);
+    make_not(sb, name.clone() + ".notB", b, &nb);
+    make_nand(sb, name.clone() + ".nand", &na, &nb, o);
+}
+
+pub fn make_xor(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &Wire<Bit>,
+    b: &Wire<Bit>,
+    o: &Wire<Bit>,
+) {
+    let name = name.into();
+    let_wires!(na, nb, anb, bna);
+    make_not(sb, name.clone() + ".notA", a, &na);
+    make_not(sb, name.clone() + ".notB", b, &nb);
+    make_nand(sb, name.clone() + "nandAB", a, &nb, &anb);
+    make_nand(sb, name.clone() + "nandBA", b, &na, &bna);
+    make_nand(sb, name + "nandO", &anb, &bna, o);
+}
+
+pub fn make_mux(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &Wire<Bit>,
+    b: &Wire<Bit>,
+    sel: &Wire<Bit>,
+    o: &Wire<Bit>,
+) {
+    let name = name.into();
+    let_wires!(nsel, selb, sela);
+    make_not(sb, name.clone() + ".not", sel, &nsel);
+    make_nand(sb, name.clone() + "nandB", b, sel, &selb);
+    make_nand(sb, name.clone() + "nandA", a, &nsel, &sela);
+    make_nand(sb, name + "nandO", &sela, &selb, o);
+}
+
+pub fn make_demux(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    i: &Wire<Bit>,
+    sel: &Wire<Bit>,
+    a: &Wire<Bit>,
+    b: &Wire<Bit>,
+) {
+    let name = name.into();
+    let_wires!(nsel);
+    make_not(sb, name.clone() + ".not", sel, &nsel);
+    make_and(sb, name.clone() + ".andA", i, &nsel, a);
+    make_and(sb, name + ".andB", i, &sel, b);
 }
 
 pub fn nand<T: Logic>(a: &T, b: &T) -> T {
@@ -97,63 +203,127 @@ fn index(sel: &[Bit]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hardware::{SystemBuilder, Wire};
 
     #[test]
     fn nand_gate() {
-        assert_eq!(nand(&O, &O), I);
-        assert_eq!(nand(&O, &I), I);
-        assert_eq!(nand(&I, &O), I);
-        assert_eq!(nand(&I, &I), O);
+        system! {
+            sys
+            wires { a, b, o }
+            gates {
+                make_nand("NAND", a, b, o);
+            }
+            body {
+                assert_sim!(sys, a=O, b=O => o=I);
+                assert_sim!(sys, a=O, b=I => o=I);
+                assert_sim!(sys, a=I, b=O => o=I);
+                assert_sim!(sys, a=I, b=I => o=O);
+            }
+        }
     }
 
     #[test]
     fn not_gate() {
-        assert_eq!(not(&O), I);
-        assert_eq!(not(&I), O);
+        system! {
+            sys
+            wires { a, b }
+            gates {
+                make_not("NOT", a, b);
+            }
+            body {
+                assert_sim!(sys, a=O => b=I);
+                assert_sim!(sys, a=I => b=O);
+            }
+        }
     }
 
     #[test]
     fn and_gate() {
-        assert_eq!(and(&O, &O), O);
-        assert_eq!(and(&O, &I), O);
-        assert_eq!(and(&I, &O), O);
-        assert_eq!(and(&I, &I), I);
+        system! {
+            sys
+            wires { a, b, o }
+            gates {
+                make_and("AND", a, b, o);
+            }
+            body {
+                assert_sim!(sys, a=O, b=O => o=O);
+                assert_sim!(sys, a=O, b=I => o=O);
+                assert_sim!(sys, a=I, b=O => o=O);
+                assert_sim!(sys, a=I, b=I => o=I);
+            }
+        }
     }
 
     #[test]
     fn or_gate() {
-        assert_eq!(or(&O, &O), O);
-        assert_eq!(or(&O, &I), I);
-        assert_eq!(or(&I, &O), I);
-        assert_eq!(or(&I, &I), I);
+        system! {
+            sys
+            wires { a, b, o }
+            gates {
+                make_or("OR", a, b, o);
+            }
+            body {
+                assert_sim!(sys, a=O, b=O => o=O);
+                assert_sim!(sys, a=O, b=I => o=I);
+                assert_sim!(sys, a=I, b=O => o=I);
+                assert_sim!(sys, a=I, b=I => o=I);
+            }
+        }
     }
 
     #[test]
     fn xor_gate() {
-        assert_eq!(xor(&O, &O), O);
-        assert_eq!(xor(&O, &I), I);
-        assert_eq!(xor(&I, &O), I);
-        assert_eq!(xor(&I, &I), O);
+        system! {
+            sys
+            wires { a, b, o }
+            gates {
+                make_xor("XOR", a, b, o);
+            }
+            body {
+                assert_sim!(sys, a=O, b=O => o=O);
+                assert_sim!(sys, a=O, b=I => o=I);
+                assert_sim!(sys, a=I, b=O => o=I);
+                assert_sim!(sys, a=I, b=I => o=O);
+            }
+        }
     }
 
     #[test]
     fn mux_gate() {
-        assert_eq!(mux(&O, &O, O), O);
-        assert_eq!(mux(&O, &I, O), O);
-        assert_eq!(mux(&I, &O, O), I);
-        assert_eq!(mux(&I, &I, O), I);
-        assert_eq!(mux(&O, &O, I), O);
-        assert_eq!(mux(&O, &I, I), I);
-        assert_eq!(mux(&I, &O, I), O);
-        assert_eq!(mux(&I, &I, I), I);
+        system! {
+            sys
+            wires { a, b, sel, o }
+            gates {
+                make_mux("MUX", a, b, sel, o);
+            }
+            body {
+                assert_sim!(sys, a=O, b=O , sel=O => o=O);
+                assert_sim!(sys, a=O, b=I , sel=O => o=O);
+                assert_sim!(sys, a=I, b=O , sel=O => o=I);
+                assert_sim!(sys, a=I, b=I , sel=O => o=I);
+                assert_sim!(sys, a=O, b=O , sel=I => o=O);
+                assert_sim!(sys, a=O, b=I , sel=I => o=I);
+                assert_sim!(sys, a=I, b=O , sel=I => o=O);
+                assert_sim!(sys, a=I, b=I , sel=I => o=I);
+            }
+        }
     }
 
     #[test]
     fn demux_gate() {
-        assert_eq!(demux(&O, &O), (O, O));
-        assert_eq!(demux(&O, &I), (O, O));
-        assert_eq!(demux(&I, &O), (I, O));
-        assert_eq!(demux(&I, &I), (O, I));
+        system! {
+            sys
+            wires { i, sel, a, b }
+            gates {
+                make_demux("DEMUX", i, sel, a, b);
+            }
+            body {
+                assert_sim!(sys, i=O, sel=O => a=O, b=O);
+                assert_sim!(sys, i=O, sel=I => a=O, b=O);
+                assert_sim!(sys, i=I, sel=O => a=I, b=O);
+                assert_sim!(sys, i=I, sel=I => a=O, b=I);
+            }
+        }
     }
 
     #[test]
