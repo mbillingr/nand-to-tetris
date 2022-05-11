@@ -1,4 +1,4 @@
-use crate::hardware::{SystemBuilder, Wire};
+use crate::hardware::{BusApi, SystemBuilder, Wire};
 use Bit::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -142,6 +142,141 @@ pub fn make_demux(
     make_not(sb, name.clone() + ".not", sel, &nsel);
     make_and(sb, name.clone() + ".andA", i, &nsel, a);
     make_and(sb, name + ".andB", i, &sel, b);
+}
+
+pub fn make_not_bus(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &[Wire<Bit>],
+    b: &[Wire<Bit>],
+) {
+    let name = name.into();
+    assert_eq!(a.len(), b.len());
+    for (k, (ai, bi)) in a.iter().zip(b).enumerate() {
+        make_not(sb, format!("{}.not[{}]", name, k), ai, bi);
+    }
+}
+
+pub fn make_and_bus(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &[Wire<Bit>],
+    b: &[Wire<Bit>],
+    o: &[Wire<Bit>],
+) {
+    let name = name.into();
+    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), o.len());
+    for (k, ((ai, bi), oi)) in a.iter().zip(b).zip(o).enumerate() {
+        make_and(sb, format!("{}.and[{}]", name, k), ai, bi, oi);
+    }
+}
+
+pub fn make_or_bus(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &[Wire<Bit>],
+    b: &[Wire<Bit>],
+    o: &[Wire<Bit>],
+) {
+    let name = name.into();
+    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), o.len());
+    for (k, ((ai, bi), oi)) in a.iter().zip(b).zip(o).enumerate() {
+        make_or(sb, format!("{}.or[{}]", name, k), ai, bi, oi);
+    }
+}
+
+pub fn make_mux_bus(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &[Wire<Bit>],
+    b: &[Wire<Bit>],
+    sel: &Wire<Bit>,
+    o: &[Wire<Bit>],
+) {
+    let name = name.into();
+    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), o.len());
+    for (k, ((ai, bi), oi)) in a.iter().zip(b).zip(o).enumerate() {
+        make_mux(sb, format!("{}.mux[{}]", name, k), ai, bi, sel, oi);
+    }
+}
+
+pub fn make_or_reduce(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &[Wire<Bit>],
+    o: &Wire<Bit>,
+) {
+    assert!(a.len() >= 2);
+    let name = name.into();
+
+    let mut inputs: Vec<_> = a.iter().cloned().collect();
+
+    let mut output = o.clone();
+    let mut k = 0;
+
+    while inputs.len() > 2 {
+        let x = inputs.pop().unwrap();
+        let y = Wire::new(O);
+        make_or(sb, format!("{}.or[{}]", name, k), &x, &y, &output);
+        output = y;
+        k += 1;
+    }
+
+    let x = inputs.pop().unwrap();
+    let y = inputs.pop().unwrap();
+    make_or(sb, format!("{}.or[{}]", name, k), &x, &y, &output);
+}
+
+pub fn make_mux_multi(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    inputs: &[&[Wire<Bit>]],
+    sel: &[Wire<Bit>],
+    o: &[Wire<Bit>],
+) {
+    let name = name.into();
+    assert_eq!(inputs.len(), 2usize.pow(sel.len() as u32));
+    let width = o.len();
+    for i in inputs {
+        assert_eq!(i.len(), width);
+    }
+
+    let mut inputs: Vec<_> = inputs.iter().map(|i| i.to_vec()).collect();
+    let mut sel = sel.to_vec();
+
+    let mut k = 0;
+    while sel.len() > 1 {
+        let subsel = sel.pop().unwrap();
+        let outputs: Vec<_> = inputs
+            .chunks(2)
+            .map(|chunk| match chunk {
+                [a, b] => (a, b, {
+                    let_buses!(out[width]);
+                    out
+                }),
+                _ => unreachable!(),
+            })
+            .map(|(a, b, out)| {
+                make_mux_bus(sb, format!("{}.bus-mux{}", name, k), a, b, &subsel, &out);
+                k += 1;
+                out
+            })
+            .collect();
+        inputs = outputs;
+    }
+    assert_eq!(inputs.len(), 2);
+
+    make_mux_bus(
+        sb,
+        format!("{}.bus-mux{}", name, k),
+        &inputs[0],
+        &inputs[1],
+        &sel[0],
+        o,
+    );
 }
 
 pub fn nand<T: Logic>(a: &T, b: &T) -> T {
@@ -328,171 +463,165 @@ mod tests {
 
     #[test]
     fn multi_bit_not() {
-        assert_eq!(not(&vec![O; 16]), vec![I; 16]);
-        assert_eq!(not(&vec![I; 16]), vec![O; 16]);
+        system! {
+            sys
+            wires { }
+            buses { a[2], b[2] }
+            gates {
+                make_not_bus("NOT", a, b);
+            }
+            body {
+                assert_sim!(sys, a=&[O, O] => b=[I, I]);
+                assert_sim!(sys, a=&[O, I] => b=[I, O]);
+                assert_sim!(sys, a=&[I, O] => b=[O, I]);
+                assert_sim!(sys, a=&[I, I] => b=[O, O]);
+            }
+        }
     }
 
     #[test]
     fn multi_bit_and() {
-        assert_eq!(and(&vec![O, O, I, I], &vec![O, I, O, I]), vec![O, O, O, I]);
+        system! {
+            sys
+            buses { a[4], b[4], o[4] }
+            gates {
+                make_and_bus("AND", a, b, o);
+            }
+            body {
+                assert_sim!(sys, a=&[O, O, I, I], b=&[O, I, O, I] => o=[O, O, O, I]);
+            }
+        }
     }
 
     #[test]
     fn multi_bit_or() {
-        assert_eq!(or(&vec![O, O, I, I], &vec![O, I, O, I]), vec![O, I, I, I]);
+        system! {
+            sys
+            buses { a[4], b[4], o[4] }
+            gates {
+                make_or_bus("NOT", a, b, o);
+            }
+            body {
+                assert_sim!(sys, a=&[O, O, I, I], b=&[O, I, O, I] => o=[O, I, I, I]);
+            }
+        }
     }
 
     #[test]
     fn multi_bit_mux() {
-        assert_eq!(
-            mux(&vec![O, O, I, I], &vec![O, I, O, I], O),
-            vec![O, O, I, I]
-        );
-        assert_eq!(
-            mux(&vec![O, O, I, I], &vec![O, I, O, I], I),
-            vec![O, I, O, I]
-        );
+        system! {
+            sys
+            wires { sel }
+            buses { a[4], b[4], o[4] }
+            gates {
+                make_mux_bus("NOT", a, b, sel, o);
+            }
+            body {
+                assert_sim!(sys, a=&[O, O, I, I], b=&[O, I, O, I], sel=O => o=[O, O, I, I]);
+                assert_sim!(sys, a=&[O, O, I, I], b=&[O, I, O, I], sel=I => o=[O, I, O, I]);
+            }
+        }
     }
 
     #[test]
     fn multi_way_or() {
-        assert_eq!(multi_or(&[O, O, O]), O);
+        system! {
+            sys
+            wires { o }
+            buses { a[3] }
+            gates {
+                make_or_reduce("NOT", a, o);
+            }
+            body {
+                assert_sim!(sys, a=&[O, O, O] => o=O);
+                assert_sim!(sys, a=&[I, O, O] => o=I);
+                assert_sim!(sys, a=&[O, I, O] => o=I);
+                assert_sim!(sys, a=&[O, O, I] => o=I);
+                assert_sim!(sys, a=&[O, I, I] => o=I);
+                assert_sim!(sys, a=&[I, O, I] => o=I);
+                assert_sim!(sys, a=&[I, I, O] => o=I);
+                assert_sim!(sys, a=&[I, I, I] => o=I);
+            }
+        }
     }
 
     #[test]
     fn mux_4way_nbit() {
-        assert_eq!(
-            multi_mux(
-                &[
-                    vec![I, O, O, O],
-                    vec![O, I, O, O],
-                    vec![O, O, I, O],
-                    vec![O, O, O, I]
-                ],
-                &[O, O]
-            ),
-            vec![I, O, O, O]
-        );
-        assert_eq!(
-            multi_mux(
-                &[
-                    vec![I, O, O, O],
-                    vec![O, I, O, O],
-                    vec![O, O, I, O],
-                    vec![O, O, O, I]
-                ],
-                &[O, I]
-            ),
-            vec![O, I, O, O]
-        );
-        assert_eq!(
-            multi_mux(
-                &[
-                    vec![I, O, O, O],
-                    vec![O, I, O, O],
-                    vec![O, O, I, O],
-                    vec![O, O, O, I]
-                ],
-                &[I, O]
-            ),
-            vec![O, O, I, O]
-        );
-        assert_eq!(
-            multi_mux(
-                &[
-                    vec![I, O, O, O],
-                    vec![O, I, O, O],
-                    vec![O, O, I, O],
-                    vec![O, O, O, I]
-                ],
-                &[I, I]
-            ),
-            vec![O, O, O, I]
-        );
+        system! {
+            sys
+            wires {}
+            buses { a[4], b[4], c[4], d[4], sel[2], o[4]}
+            setup {
+                let inputs = [a.as_slice(), b.as_slice(), c.as_slice(), d.as_slice()];
+            }
+            gates {
+                make_mux_multi("MULTIMUX", inputs, sel, o);
+            }
+            body {
+                assert_sim!(sys,
+                    a=&[I, O, O, O], b=&[O, I, O, O], c=&[O, O, I, O], d=&[O, O, O, I],
+                    sel=&[O, O] => o=[I, O, O, O]);
+                assert_sim!(sys,
+                    a=&[I, O, O, O], b=&[O, I, O, O], c=&[O, O, I, O], d=&[O, O, O, I],
+                    sel=&[O, I] => o=[O, I, O, O]);
+                assert_sim!(sys,
+                    a=&[I, O, O, O], b=&[O, I, O, O], c=&[O, O, I, O], d=&[O, O, O, I],
+                    sel=&[I, O] => o=[O, O, I, O]);
+                assert_sim!(sys,
+                    a=&[I, O, O, O], b=&[O, I, O, O], c=&[O, O, I, O], d=&[O, O, O, I],
+                    sel=&[I, I] => o=[O, O, O, I]);
+            }
+        }
     }
 
     #[test]
     fn mux_8way_nbit() {
-        assert_eq!(
-            multi_mux(
-                &[
-                    vec![I, O, O, O, O, O, O, O],
-                    vec![O, I, O, O, O, O, O, O],
-                    vec![O, O, I, O, O, O, O, O],
-                    vec![O, O, O, I, O, O, O, O],
-                    vec![O, O, O, O, I, O, O, O],
-                    vec![O, O, O, O, O, I, O, O],
-                    vec![O, O, O, O, O, O, I, O],
-                    vec![O, O, O, O, O, O, O, I]
-                ],
-                &[O, O, O]
-            ),
-            vec![I, O, O, O, O, O, O, O],
-        );
-        assert_eq!(
-            multi_mux(
-                &[
-                    vec![I, O, O, O, O, O, O, O],
-                    vec![O, I, O, O, O, O, O, O],
-                    vec![O, O, I, O, O, O, O, O],
-                    vec![O, O, O, I, O, O, O, O],
-                    vec![O, O, O, O, I, O, O, O],
-                    vec![O, O, O, O, O, I, O, O],
-                    vec![O, O, O, O, O, O, I, O],
-                    vec![O, O, O, O, O, O, O, I]
-                ],
-                &[O, O, I]
-            ),
-            vec![O, I, O, O, O, O, O, O],
-        );
-        assert_eq!(
-            multi_mux(
-                &[
-                    vec![I, O, O, O, O, O, O, O],
-                    vec![O, I, O, O, O, O, O, O],
-                    vec![O, O, I, O, O, O, O, O],
-                    vec![O, O, O, I, O, O, O, O],
-                    vec![O, O, O, O, I, O, O, O],
-                    vec![O, O, O, O, O, I, O, O],
-                    vec![O, O, O, O, O, O, I, O],
-                    vec![O, O, O, O, O, O, O, I]
-                ],
-                &[O, I, O]
-            ),
-            vec![O, O, I, O, O, O, O, O],
-        );
-        assert_eq!(
-            multi_mux(
-                &[
-                    vec![I, O, O, O, O, O, O, O],
-                    vec![O, I, O, O, O, O, O, O],
-                    vec![O, O, I, O, O, O, O, O],
-                    vec![O, O, O, I, O, O, O, O],
-                    vec![O, O, O, O, I, O, O, O],
-                    vec![O, O, O, O, O, I, O, O],
-                    vec![O, O, O, O, O, O, I, O],
-                    vec![O, O, O, O, O, O, O, I]
-                ],
-                &[I, O, O]
-            ),
-            vec![O, O, O, O, I, O, O, O],
-        );
-        assert_eq!(
-            multi_mux(
-                &[
-                    vec![I, O, O, O, O, O, O, O],
-                    vec![O, I, O, O, O, O, O, O],
-                    vec![O, O, I, O, O, O, O, O],
-                    vec![O, O, O, I, O, O, O, O],
-                    vec![O, O, O, O, I, O, O, O],
-                    vec![O, O, O, O, O, I, O, O],
-                    vec![O, O, O, O, O, O, I, O],
-                    vec![O, O, O, O, O, O, O, I]
-                ],
-                &[I, I, I]
-            ),
-            vec![O, O, O, O, O, O, O, I],
-        );
+        system! {
+            sys
+            wires {}
+            buses { a[8], b[8], c[8], d[8], e[8], f[8], g[8], h[8], sel[3], o[8]}
+            setup {
+                let inputs = [a.as_slice(), b.as_slice(), c.as_slice(), d.as_slice(),
+                              e.as_slice(), f.as_slice(), g.as_slice(), h.as_slice()];
+            }
+            gates {
+                make_mux_multi("MULTIMUX", inputs, sel, o);
+            }
+            body {
+                assert_sim!(sys,
+                    a=&[I, O, O, O, O, O, O, O], b=&[O, I, O, O, O, O, O, O], c=&[O, O, I, O, O, O, O, O], d=&[O, O, O, I, O, O, O, O],
+                    e=&[O, O, O, O, I, O, O, O], f=&[O, O, O, O, O, I, O, O], g=&[O, O, O, O, O, O, I, O], h=&[O, O, O, O, O, O, O, I],
+                    sel=&[O, O, O] => o=[I, O, O, O, O, O, O, O]);
+                assert_sim!(sys,
+                    a=&[I, O, O, O, O, O, O, O], b=&[O, I, O, O, O, O, O, O], c=&[O, O, I, O, O, O, O, O], d=&[O, O, O, I, O, O, O, O],
+                    e=&[O, O, O, O, I, O, O, O], f=&[O, O, O, O, O, I, O, O], g=&[O, O, O, O, O, O, I, O], h=&[O, O, O, O, O, O, O, I],
+                    sel=&[O, O, I] => o=[O, I, O, O, O, O, O, O]);
+                assert_sim!(sys,
+                    a=&[I, O, O, O, O, O, O, O], b=&[O, I, O, O, O, O, O, O], c=&[O, O, I, O, O, O, O, O], d=&[O, O, O, I, O, O, O, O],
+                    e=&[O, O, O, O, I, O, O, O], f=&[O, O, O, O, O, I, O, O], g=&[O, O, O, O, O, O, I, O], h=&[O, O, O, O, O, O, O, I],
+                    sel=&[O, I, O] => o=[O, O, I, O, O, O, O, O]);
+                assert_sim!(sys,
+                    a=&[I, O, O, O, O, O, O, O], b=&[O, I, O, O, O, O, O, O], c=&[O, O, I, O, O, O, O, O], d=&[O, O, O, I, O, O, O, O],
+                    e=&[O, O, O, O, I, O, O, O], f=&[O, O, O, O, O, I, O, O], g=&[O, O, O, O, O, O, I, O], h=&[O, O, O, O, O, O, O, I],
+                    sel=&[O, I, I] => o=[O, O, O, I, O, O, O, O]);
+                assert_sim!(sys,
+                    a=&[I, O, O, O, O, O, O, O], b=&[O, I, O, O, O, O, O, O], c=&[O, O, I, O, O, O, O, O], d=&[O, O, O, I, O, O, O, O],
+                    e=&[O, O, O, O, I, O, O, O], f=&[O, O, O, O, O, I, O, O], g=&[O, O, O, O, O, O, I, O], h=&[O, O, O, O, O, O, O, I],
+                    sel=&[I, O, O] => o=[O, O, O, O, I, O, O, O]);
+                assert_sim!(sys,
+                    a=&[I, O, O, O, O, O, O, O], b=&[O, I, O, O, O, O, O, O], c=&[O, O, I, O, O, O, O, O], d=&[O, O, O, I, O, O, O, O],
+                    e=&[O, O, O, O, I, O, O, O], f=&[O, O, O, O, O, I, O, O], g=&[O, O, O, O, O, O, I, O], h=&[O, O, O, O, O, O, O, I],
+                    sel=&[I, O, I] => o=[O, O, O, O, O, I, O, O]);
+                assert_sim!(sys,
+                    a=&[I, O, O, O, O, O, O, O], b=&[O, I, O, O, O, O, O, O], c=&[O, O, I, O, O, O, O, O], d=&[O, O, O, I, O, O, O, O],
+                    e=&[O, O, O, O, I, O, O, O], f=&[O, O, O, O, O, I, O, O], g=&[O, O, O, O, O, O, I, O], h=&[O, O, O, O, O, O, O, I],
+                    sel=&[I, I, O] => o=[O, O, O, O, O, O, I, O]);
+                assert_sim!(sys,
+                    a=&[I, O, O, O, O, O, O, O], b=&[O, I, O, O, O, O, O, O], c=&[O, O, I, O, O, O, O, O], d=&[O, O, O, I, O, O, O, O],
+                    e=&[O, O, O, O, I, O, O, O], f=&[O, O, O, O, O, I, O, O], g=&[O, O, O, O, O, O, I, O], h=&[O, O, O, O, O, O, O, I],
+                    sel=&[I, I, I] => o=[O, O, O, O, O, O, O, I]);
+            }
+        }
     }
 
     #[test]

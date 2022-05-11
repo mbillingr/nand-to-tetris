@@ -50,6 +50,22 @@ impl<T> Debug for Wire<T> {
     }
 }
 
+pub trait BusApi<T> {
+    fn value(&self) -> Vec<T>;
+    fn set(&self, value: &[T]);
+}
+
+impl<T: Copy> BusApi<T> for Vec<Wire<T>> {
+    fn value(&self) -> Vec<T> {
+        self.iter().map(|wire| wire.value()).collect()
+    }
+    fn set(&self, values: &[T]) {
+        for (wire, &value) in self.iter().zip(values) {
+            wire.set(value)
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum SystemBuildError {
     DeviceLoop(Box<str>),
@@ -311,14 +327,25 @@ macro_rules! let_wires {
 }
 
 #[macro_export]
+macro_rules! let_buses {
+    ($($bus:ident[$width:expr]),*) => {
+        $(let $bus: Vec<_> = (0..$width).map(|_|Wire::new(Default::default())).collect();)*
+    }
+}
+
+#[macro_export]
 macro_rules! system {
     (
         $sys:ident
-        wires { $($wire:ident),* }
+        $(wires { $($wire:ident),* })?
+        $(buses { $($bus:ident[$width:expr]),* })?
+        $(setup { $($setup:tt)* })?
         gates { $($gate:ident($name:expr, $($args:ident),*);)* }
         body { $($checks:tt)* }
     ) => {
-        let_wires!($($wire),*);
+        $(let_wires!($($wire),*);)?
+        $(let_buses!($($bus[$width]),*);)?
+        $($($setup)*)?
         let mut sb = SystemBuilder::new();
         $($gate(&mut sb, $name, $(&$args),*);)*
         let $sys = sb.build().unwrap();
