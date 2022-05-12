@@ -279,6 +279,55 @@ pub fn make_mux_multi(
     );
 }
 
+pub fn make_demux_multi(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    input: &Wire<Bit>,
+    sel: &[Wire<Bit>],
+    out: &[Wire<Bit>],
+) {
+    let name = name.into();
+    assert_eq!(out.len(), 2usize.pow(sel.len() as u32));
+
+    let mut outputs: Vec<_> = out.to_vec();
+    let mut sel = sel.to_vec();
+
+    let mut k = 0;
+    while sel.len() > 1 {
+        let subsel = sel.pop().unwrap();
+        let inputs: Vec<_> = outputs
+            .chunks(2)
+            .map(|chunk| match chunk {
+                [a, b] => (
+                    {
+                        let_wires!(inp);
+                        inp
+                    },
+                    a,
+                    b,
+                ),
+                _ => unreachable!(),
+            })
+            .map(|(inp, a, b)| {
+                make_demux(sb, format!("{}.demux{}", name, k), &inp, &subsel, a, b);
+                k += 1;
+                inp
+            })
+            .collect();
+        outputs = inputs;
+    }
+    assert_eq!(outputs.len(), 2);
+
+    make_demux(
+        sb,
+        format!("{}.demux{}", name, k),
+        input,
+        &sel[0],
+        &outputs[0],
+        &outputs[1],
+    );
+}
+
 pub fn nand<T: Logic>(a: &T, b: &T) -> T {
     T::nand(a, b)
 }
@@ -626,25 +675,45 @@ mod tests {
 
     #[test]
     fn demux_4way_1bit() {
-        assert_eq!(multi_demux(O, &[O, O]), vec![O, O, O, O]);
-        assert_eq!(multi_demux(O, &[I, I]), vec![O, O, O, O]);
-        assert_eq!(multi_demux(I, &[O, O]), vec![I, O, O, O]);
-        assert_eq!(multi_demux(I, &[O, I]), vec![O, I, O, O]);
-        assert_eq!(multi_demux(I, &[I, O]), vec![O, O, I, O]);
-        assert_eq!(multi_demux(I, &[I, I]), vec![O, O, O, I]);
+        system! {
+            sys
+            wires { input }
+            buses { sel[2], out[4] }
+            gates {
+                make_demux_multi("DEMUX", input, sel, out);
+            }
+            body {
+                assert_sim!(sys, input=O, sel=&[O, O] => out=[O, O, O, O]);
+                assert_sim!(sys, input=O, sel=&[I, I] => out=[O, O, O, O]);
+                assert_sim!(sys, input=I, sel=&[O, O] => out=[I, O, O, O]);
+                assert_sim!(sys, input=I, sel=&[O, I] => out=[O, I, O, O]);
+                assert_sim!(sys, input=I, sel=&[I, O] => out=[O, O, I, O]);
+                assert_sim!(sys, input=I, sel=&[I, I] => out=[O, O, O, I]);
+            }
+        }
     }
 
     #[test]
     fn demux_8way_1bit() {
-        assert_eq!(multi_demux(O, &[O, O, O]), vec![O, O, O, O, O, O, O, O]);
-        assert_eq!(multi_demux(O, &[I, I, I]), vec![O, O, O, O, O, O, O, O]);
-        assert_eq!(multi_demux(I, &[O, O, O]), vec![I, O, O, O, O, O, O, O]);
-        assert_eq!(multi_demux(I, &[O, O, I]), vec![O, I, O, O, O, O, O, O]);
-        assert_eq!(multi_demux(I, &[O, I, O]), vec![O, O, I, O, O, O, O, O]);
-        assert_eq!(multi_demux(I, &[O, I, I]), vec![O, O, O, I, O, O, O, O]);
-        assert_eq!(multi_demux(I, &[I, O, O]), vec![O, O, O, O, I, O, O, O]);
-        assert_eq!(multi_demux(I, &[I, O, I]), vec![O, O, O, O, O, I, O, O]);
-        assert_eq!(multi_demux(I, &[I, I, O]), vec![O, O, O, O, O, O, I, O]);
-        assert_eq!(multi_demux(I, &[I, I, I]), vec![O, O, O, O, O, O, O, I]);
+        system! {
+            sys
+            wires { input }
+            buses { sel[3], out[8] }
+            gates {
+                make_demux_multi("DEMUX", input, sel, out);
+            }
+            body {
+                assert_sim!(sys, input=O, sel=&[O, O, O] => out=[O, O, O, O, O, O, O, O]);
+                assert_sim!(sys, input=O, sel=&[I, I, O] => out=[O, O, O, O, O, O, O, O]);
+                assert_sim!(sys, input=I, sel=&[O, O, O] => out=[I, O, O, O, O, O, O, O]);
+                assert_sim!(sys, input=I, sel=&[O, O, I] => out=[O, I, O, O, O, O, O, O]);
+                assert_sim!(sys, input=I, sel=&[O, I, O] => out=[O, O, I, O, O, O, O, O]);
+                assert_sim!(sys, input=I, sel=&[O, I, I] => out=[O, O, O, I, O, O, O, O]);
+                assert_sim!(sys, input=I, sel=&[I, O, O] => out=[O, O, O, O, I, O, O, O]);
+                assert_sim!(sys, input=I, sel=&[I, O, I] => out=[O, O, O, O, O, I, O, O]);
+                assert_sim!(sys, input=I, sel=&[I, I, O] => out=[O, O, O, O, O, O, I, O]);
+                assert_sim!(sys, input=I, sel=&[I, I, I] => out=[O, O, O, O, O, O, O, I]);
+            }
+        }
     }
 }
