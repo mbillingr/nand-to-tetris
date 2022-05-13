@@ -1,4 +1,4 @@
-use crate::hardware::{BusApi, SystemBuilder, Wire};
+use crate::hardware::{SystemBuilder, Wire};
 use Bit::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -387,7 +387,7 @@ fn index(sel: &[Bit]) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hardware::{SystemBuilder, Wire};
+    use crate::hardware::BusApi;
 
     #[test]
     fn nand_gate() {

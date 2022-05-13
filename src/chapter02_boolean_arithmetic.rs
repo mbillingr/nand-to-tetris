@@ -1,5 +1,53 @@
 use crate::chapter01_boolean_logic::Bit::O;
-use crate::chapter01_boolean_logic::{and, multi_or, mux, not, or, xor, Bit};
+use crate::chapter01_boolean_logic::{and, multi_or, mux, not, or, xor, Bit, make_xor, make_and, make_or};
+use crate::hardware::{SystemBuilder, Wire};
+
+pub fn make_half_adder(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &Wire<Bit>,
+    b: &Wire<Bit>,
+    s: &Wire<Bit>,
+    c: &Wire<Bit>,
+) {
+    let name = name.into();
+    make_xor(sb, format!("{}.add", name), a, b, s);
+    make_and(sb, format!("{}.carry", name), a, b, c)
+}
+
+pub fn make_full_adder(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &Wire<Bit>,
+    b: &Wire<Bit>,
+    c: &Wire<Bit>,
+    sum: &Wire<Bit>,
+    carry: &Wire<Bit>,
+) {
+    let name = name.into();
+    let_wires!(s1, c1, c2);
+    make_half_adder(sb, format!("{}.add1", name), a, b, &s1, &c1);
+    make_half_adder(sb, format!("{}.add2", name), &s1, c, sum, &c2);
+    make_or(sb, format!("{}.either_carry", name), &c1, &c2, carry);
+}
+
+pub fn make_adder(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &[Wire<Bit>],
+    b: &[Wire<Bit>],
+    c: &[Wire<Bit>],
+) {
+    let name = name.into();
+    let_wires!(carry);
+    let mut carry = carry;
+    make_half_adder(sb, format!("{}.add0", name), &a[0], &b[0], &c[0], &carry);
+    for (i, ((ai, bi), ci)) in a.iter().zip(b).zip(c).enumerate().skip(1) {
+        let_wires!(new_carry);
+        make_full_adder(sb, format!("{}.add{}", name, i), ai, bi, &carry, ci, &new_carry);
+        carry = new_carry;
+    }
+}
 
 #[derive(Debug, PartialEq)]
 pub struct Adder {
@@ -96,40 +144,65 @@ fn msb(input: &[Bit]) -> Bit {
 mod tests {
     use super::*;
     use Bit::{I, O};
+    use crate::hardware::BusApi;
 
     #[test]
     fn half_adder() {
-        assert_eq!(Adder::half(O, O), Adder { sum: O, carry: O });
-        assert_eq!(Adder::half(O, I), Adder { sum: I, carry: O });
-        assert_eq!(Adder::half(I, O), Adder { sum: I, carry: O });
-        assert_eq!(Adder::half(I, I), Adder { sum: O, carry: I });
+        system! {
+            sys
+            wires { a, b, s, c }
+            gates {
+                make_half_adder("HALFADD", a, b, s, c);
+            }
+            body {
+                assert_sim!(sys, a=O, b=O => s=O, c=O);
+                assert_sim!(sys, a=O, b=I => s=I, c=O);
+                assert_sim!(sys, a=I, b=O => s=I, c=O);
+                assert_sim!(sys, a=I, b=I => s=O, c=I);
+            }
+        }
     }
 
     #[test]
     fn full_adder() {
-        assert_eq!(Adder::full(O, O, O), Adder { sum: O, carry: O });
-        assert_eq!(Adder::full(O, O, I), Adder { sum: I, carry: O });
-        assert_eq!(Adder::full(O, I, O), Adder { sum: I, carry: O });
-        assert_eq!(Adder::full(O, I, I), Adder { sum: O, carry: I });
-        assert_eq!(Adder::full(I, O, O), Adder { sum: I, carry: O });
-        assert_eq!(Adder::full(I, O, I), Adder { sum: O, carry: I });
-        assert_eq!(Adder::full(I, I, O), Adder { sum: O, carry: I });
-        assert_eq!(Adder::full(I, I, I), Adder { sum: I, carry: I });
+        system! {
+            sys
+            wires { a, b, c, s, carry }
+            gates {
+                make_full_adder("ADD", a, b, c, s, carry);
+            }
+            body {
+                assert_sim!(sys, a=O, b=O, c=O => s=O, carry=O);
+                assert_sim!(sys, a=O, b=O, c=I => s=I, carry=O);
+                assert_sim!(sys, a=O, b=I, c=O => s=I, carry=O);
+                assert_sim!(sys, a=O, b=I, c=I => s=O, carry=I);
+                assert_sim!(sys, a=I, b=O, c=O => s=I, carry=O);
+                assert_sim!(sys, a=I, b=O, c=I => s=O, carry=I);
+                assert_sim!(sys, a=I, b=I, c=O => s=O, carry=I);
+                assert_sim!(sys, a=I, b=I, c=I => s=I, carry=I);
+            }
+        }
     }
 
     #[test]
     fn test_multi_add() {
-        assert_eq!(multi_add(&[], &[]), vec![]);
-        assert_eq!(multi_add(&[O], &[O]), vec![O]);
-        assert_eq!(multi_add(&[I], &[O]), vec![I]);
-        assert_eq!(multi_add(&[O], &[I]), vec![I]);
-        assert_eq!(multi_add(&[I], &[I]), vec![O]);
-        assert_eq!(multi_add(&[O, O], &[O, O]), vec![O, O]);
-        assert_eq!(multi_add(&[I, O], &[O, I]), vec![I, I]);
-        assert_eq!(multi_add(&[I, O], &[I, O]), vec![O, I]);
-        assert_eq!(multi_add(&[I, I], &[I, O]), vec![O, O]);
-        assert_eq!(multi_add(&[I, I], &[I, I]), vec![O, I]);
-        assert_eq!(multi_add(&[I, I, I, O], &[I, O, O, O]), vec![O, O, O, I]);
+        system! {
+            sys
+            buses { a[4], b[4], c[4]}
+            gates {
+                make_adder("ADD", a, b, c);
+            }
+            body {
+                assert_sim!(sys, a=&[O, O, O, O], b=&[O, O, O, O] => c=[O, O, O, O]);
+                assert_sim!(sys, a=&[O, O, O, O], b=&[I, I, I, I] => c=[I, I, I, I]);
+                assert_sim!(sys, a=&[O, I, I, O], b=&[O, O, O, O] => c=[O, I, I, O]);
+                assert_sim!(sys, a=&[I, O, O, I], b=&[I, O, O, I] => c=[O, I, O, O]);
+                assert_sim!(sys, a=&[I, I, I, O], b=&[I, O, O, O] => c=[O, O, O, I]);
+                assert_sim!(sys, a=&[I, O, O, O], b=&[I, I, I, O] => c=[O, O, O, I]);
+                assert_sim!(sys, a=&[I, I, I, O], b=&[I, I, I, O] => c=[O, I, I, I]);
+                assert_sim!(sys, a=&[I, I, I, I], b=&[I, I, I, I] => c=[O, I, I, I]);
+            }
+        }
     }
 
     #[test]
