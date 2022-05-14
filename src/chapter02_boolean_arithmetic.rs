@@ -1,7 +1,6 @@
-use crate::chapter01_boolean_logic::Bit::O;
 use crate::chapter01_boolean_logic::{
-    and, make_and, make_and_bus, make_identity, make_mux_bus, make_not, make_or, make_or_reduce,
-    make_xor, multi_or, mux, not, or, xor, Bit,
+    make_and, make_and_bus, make_identity, make_mux_bus, make_not, make_or, make_or_reduce,
+    make_xor, Bit,
 };
 use crate::hardware::{SystemBuilder, Wire};
 
@@ -132,97 +131,6 @@ pub fn negate(
     for (k, (i, o)) in input.iter().zip(out).enumerate() {
         make_xor(sb, format!("{}[{}]", name, k), i, sel, o);
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Adder {
-    pub sum: Bit,
-    pub carry: Bit,
-}
-
-impl Adder {
-    pub fn half(a: Bit, b: Bit) -> Self {
-        Adder {
-            sum: xor(&a, &b),
-            carry: and(&a, &b),
-        }
-    }
-
-    pub fn full(a: Bit, b: Bit, c: Bit) -> Self {
-        let first = Adder::half(a, b);
-        let second = Adder::half(c, first.sum);
-        Adder {
-            sum: second.sum,
-            carry: or(&first.carry, &second.carry),
-        }
-    }
-}
-
-fn multi_add(a: &[Bit], b: &[Bit]) -> Vec<Bit> {
-    let mut result = vec![];
-    let mut carry = O;
-
-    for (&ai, &bi) in a.iter().zip(b) {
-        let x = Adder::full(ai, bi, carry);
-        result.push(x.sum);
-        carry = x.carry;
-    }
-
-    result
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Alu {
-    out: Vec<Bit>,
-    zr: Bit,
-    ng: Bit,
-}
-
-impl Alu {
-    pub fn calc(
-        x: &Vec<Bit>,
-        y: &Vec<Bit>,
-        zx: Bit,
-        nx: Bit,
-        zy: Bit,
-        ny: Bit,
-        f: Bit,
-        no: Bit,
-    ) -> Self {
-        let x = set_zero__(zx, x);
-        let x = negate_(nx, &x);
-        let y = set_zero__(zy, y);
-        let y = negate_(ny, &y);
-
-        let added = multi_add(&x, &y);
-        let anded = and(&x, &y);
-
-        let out = mux(&anded, &added, f);
-        let out = negate_(no, &out);
-
-        Alu {
-            zr: not(&multi_or(&out)),
-            ng: msb(&out),
-            out,
-        }
-    }
-}
-
-fn set_zero__(z: Bit, input: &Vec<Bit>) -> Vec<Bit> {
-    let n = input.len();
-    and(input, &vec![not(&z); n])
-}
-
-fn negate_(c: Bit, input: &Vec<Bit>) -> Vec<Bit> {
-    let n = input.len();
-    or(
-        &and(&vec![c; n], &not(&input)),
-        &and(&vec![not(&c); n], input),
-    )
-}
-
-fn msb(input: &[Bit]) -> Bit {
-    *input.last().unwrap()
 }
 
 #[cfg(test)]

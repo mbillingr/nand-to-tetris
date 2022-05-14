@@ -13,38 +13,6 @@ impl Default for Bit {
     }
 }
 
-pub trait Logic {
-    fn nand(a: &Self, b: &Self) -> Self;
-
-    fn mux(a: &Self, b: &Self, sel: Bit) -> Self;
-}
-
-impl Logic for Bit {
-    fn nand(a: &Self, b: &Self) -> Self {
-        match (a, b) {
-            (I, I) => O,
-            _ => I,
-        }
-    }
-
-    fn mux(a: &Self, b: &Self, sel: Bit) -> Self {
-        nand(&nand(&sel, b), &nand(&not(&sel), a))
-    }
-}
-
-impl<T: Logic> Logic for Vec<T> {
-    fn nand(a: &Self, b: &Self) -> Self {
-        a.iter().zip(b).map(|(ai, bi)| T::nand(ai, bi)).collect()
-    }
-
-    fn mux(a: &Self, b: &Self, sel: Bit) -> Self {
-        a.iter()
-            .zip(b)
-            .map(|(ai, bi)| T::mux(ai, bi, sel))
-            .collect()
-    }
-}
-
 pub fn make_identity(
     sb: &mut SystemBuilder<Bit>,
     name: impl Into<Box<str>>,
@@ -341,62 +309,6 @@ pub fn make_demux_multi(
         &outputs[0],
         &outputs[1],
     );
-}
-
-pub fn nand<T: Logic>(a: &T, b: &T) -> T {
-    T::nand(a, b)
-}
-
-pub fn not<T: Logic>(a: &T) -> T {
-    nand(a, a)
-}
-
-pub fn and<T: Logic>(a: &T, b: &T) -> T {
-    not(&nand(a, b))
-}
-
-pub fn or<T: Logic>(a: &T, b: &T) -> T {
-    nand(&not(a), &not(b))
-}
-
-pub fn xor<T: Logic>(a: &T, b: &T) -> T {
-    nand(&nand(a, &not(b)), &nand(&not(a), b))
-}
-
-pub fn mux<T: Logic>(a: &T, b: &T, sel: Bit) -> T {
-    T::mux(a, b, sel)
-}
-
-pub fn demux<T: Logic>(i: &T, sel: &T) -> (T, T) {
-    let a = and(i, &not(sel));
-    let b = and(i, sel);
-    (a, b)
-}
-
-pub fn multi_or(input: &[Bit]) -> Bit {
-    input.iter().fold(O, |x, y| or(&x, y))
-}
-
-pub fn multi_mux<T: Logic + Clone>(inputs: &[T], sel: &[Bit]) -> T {
-    inputs[index(sel)].clone()
-}
-
-pub fn multi_demux(input: Bit, sel: &[Bit]) -> Vec<Bit> {
-    let mut output = vec![O; 2usize.pow(sel.len() as u32)];
-    output[index(sel)] = input;
-    output
-}
-
-fn index(sel: &[Bit]) -> usize {
-    let mut idx = 0;
-    for s in sel.iter() {
-        idx *= 2;
-        match s {
-            I => idx += 1,
-            O => {}
-        }
-    }
-    idx
 }
 
 #[cfg(test)]
