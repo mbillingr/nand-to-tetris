@@ -1,5 +1,8 @@
 use crate::chapter01_boolean_logic::Bit::O;
-use crate::chapter01_boolean_logic::{and, multi_or, mux, not, or, xor, Bit, make_xor, make_and, make_or};
+use crate::chapter01_boolean_logic::{
+    and, make_and, make_and_bus, make_identity, make_mux_bus, make_not, make_or, make_or_reduce,
+    make_xor, multi_or, mux, not, or, xor, Bit,
+};
 use crate::hardware::{SystemBuilder, Wire};
 
 pub fn make_half_adder(
@@ -44,8 +47,90 @@ pub fn make_adder(
     make_half_adder(sb, format!("{}.add0", name), &a[0], &b[0], &c[0], &carry);
     for (i, ((ai, bi), ci)) in a.iter().zip(b).zip(c).enumerate().skip(1) {
         let_wires!(new_carry);
-        make_full_adder(sb, format!("{}.add{}", name, i), ai, bi, &carry, ci, &new_carry);
+        make_full_adder(
+            sb,
+            format!("{}.add{}", name, i),
+            ai,
+            bi,
+            &carry,
+            ci,
+            &new_carry,
+        );
         carry = new_carry;
+    }
+}
+
+pub fn make_alu(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    x: &[Wire<Bit>],
+    y: &[Wire<Bit>],
+    zx: &Wire<Bit>,
+    nx: &Wire<Bit>,
+    zy: &Wire<Bit>,
+    ny: &Wire<Bit>,
+    f: &Wire<Bit>,
+    no: &Wire<Bit>,
+    out: &[Wire<Bit>],
+    zr: &Wire<Bit>,
+    ng: &Wire<Bit>,
+) {
+    let width = out.len();
+    let name = name.into();
+
+    let_buses!(x_z[width], y_z[width]);
+    set_zero(sb, format!("{}.zerox", name), x, zx, &x_z);
+    set_zero(sb, format!("{}.zeroy", name), y, zy, &y_z);
+
+    let_buses!(x_n[width], y_n[width]);
+    negate(sb, format!("{}.negx", name), &x_z, nx, &x_n);
+    negate(sb, format!("{}.negy", name), &y_z, ny, &y_n);
+
+    let_buses!(fand[width], fadd[width]);
+    make_and_bus(sb, format!("{}.fand", name), &x_n, &y_n, &fand);
+    make_adder(sb, format!("{}.fadd", name), &x_n, &y_n, &fadd);
+
+    let_buses!(pre_out[width]);
+    make_mux_bus(sb, format!("{}.fmux", name), &fand, &fadd, f, &pre_out);
+
+    negate(sb, format!("{}.nego", name), &pre_out, no, &out);
+
+    let_wires!(out_nz);
+    make_or_reduce(sb, format!("{}.notzero", name), out, &out_nz);
+    make_not(sb, format!("{}.iszero", name), &out_nz, zr);
+
+    make_identity(sb, format!("{}.isneg", name), &out[width - 1], ng);
+}
+
+pub fn set_zero(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    input: &[Wire<Bit>],
+    sel: &Wire<Bit>,
+    out: &[Wire<Bit>],
+) {
+    assert_eq!(input.len(), out.len());
+    let name = name.into();
+
+    let_wires!(nsel);
+    make_not(sb, format!("{}.isel", name), sel, &nsel);
+
+    for (k, (i, o)) in input.iter().zip(out).enumerate() {
+        make_and(sb, format!("{}[{}]", name, k), i, &nsel, o);
+    }
+}
+
+pub fn negate(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    input: &[Wire<Bit>],
+    sel: &Wire<Bit>,
+    out: &[Wire<Bit>],
+) {
+    assert_eq!(input.len(), out.len());
+    let name = name.into();
+    for (k, (i, o)) in input.iter().zip(out).enumerate() {
+        make_xor(sb, format!("{}[{}]", name, k), i, sel, o);
     }
 }
 
@@ -104,16 +189,16 @@ impl Alu {
         f: Bit,
         no: Bit,
     ) -> Self {
-        let x = set_zero(zx, x);
-        let x = negate(nx, &x);
-        let y = set_zero(zy, y);
-        let y = negate(ny, &y);
+        let x = set_zero__(zx, x);
+        let x = negate_(nx, &x);
+        let y = set_zero__(zy, y);
+        let y = negate_(ny, &y);
 
         let added = multi_add(&x, &y);
         let anded = and(&x, &y);
 
         let out = mux(&anded, &added, f);
-        let out = negate(no, &out);
+        let out = negate_(no, &out);
 
         Alu {
             zr: not(&multi_or(&out)),
@@ -123,12 +208,12 @@ impl Alu {
     }
 }
 
-fn set_zero(z: Bit, input: &Vec<Bit>) -> Vec<Bit> {
+fn set_zero__(z: Bit, input: &Vec<Bit>) -> Vec<Bit> {
     let n = input.len();
     and(input, &vec![not(&z); n])
 }
 
-fn negate(c: Bit, input: &Vec<Bit>) -> Vec<Bit> {
+fn negate_(c: Bit, input: &Vec<Bit>) -> Vec<Bit> {
     let n = input.len();
     or(
         &and(&vec![c; n], &not(&input)),
@@ -143,8 +228,8 @@ fn msb(input: &[Bit]) -> Bit {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use Bit::{I, O};
     use crate::hardware::BusApi;
+    use Bit::{I, O};
 
     #[test]
     fn half_adder() {
@@ -207,196 +292,136 @@ mod tests {
 
     #[test]
     fn test_alu() {
-        // 0
-        assert_eq!(
-            Alu::calc(&vec![I, I], &vec![I, I], I, O, I, O, I, O),
-            Alu {
-                out: vec![O, O],
-                zr: I,
-                ng: O
+        system! {
+            sys
+            wires { zx, nx, zy, ny, f, no, zr, ng }
+            buses { x[2], y[2], out[2]}
+            gates {
+                make_alu("ALU", x, y, zx, nx, zy, ny, f, no, out, zr, ng);
             }
-        );
+            body {
+                // 0
+                assert_sim!(sys,
+                    x=&[I, I], y=&[I, I], zx=I, nx=O, zy=I, ny=O, f=I, no=O
+                    => out=[O, O], zr=I, ng=O);
 
-        // 1
-        assert_eq!(
-            Alu::calc(&vec![I, I], &vec![I, I], I, I, I, I, I, I),
-            Alu {
-                out: vec![I, O],
-                zr: O,
-                ng: O
-            }
-        );
+                // 1
+                assert_sim!(sys,
+                    x=&[I, I], y=&[I, I], zx=I, nx=I, zy=I, ny=I, f=I, no=I
+                    => out=[I, O], zr=O, ng=O);
 
-        // -1
-        assert_eq!(
-            Alu::calc(&vec![I, I], &vec![I, I], I, I, I, O, I, O),
-            Alu {
-                out: vec![I, I],
-                zr: O,
-                ng: I
-            }
-        );
+                // -1
+                assert_sim!(sys,
+                    x=&[I, I], y=&[I, I], zx=I, nx=I, zy=I, ny=O, f=I, no=O
+                    => out=[I, I], zr=O, ng=I);
 
-        // x
-        assert_eq!(
-            Alu::calc(&vec![O, I, O], &vec![I, O, I], O, O, I, I, O, O),
-            Alu {
-                out: vec![O, I, O],
-                zr: O,
-                ng: O
-            }
-        );
+                // x
+                assert_sim!(sys,
+                    x=&[I, O], y=&[O, I], zx=O, nx=O, zy=I, ny=I, f=O, no=O
+                    => out=[I, O], zr=O, ng=O);
 
-        // y
-        assert_eq!(
-            Alu::calc(&vec![I, O, I], &vec![O, I, O], I, I, O, O, O, O),
-            Alu {
-                out: vec![O, I, O],
-                zr: O,
-                ng: O
-            }
-        );
+                // y
+                assert_sim!(sys,
+                    x=&[I, O], y=&[O, I], zx=I, nx=I, zy=O, ny=O, f=O, no=O
+                    => out=[O, I], zr=O, ng=I);
 
-        // !x
-        assert_eq!(
-            Alu::calc(&vec![I, O, I], &vec![O, I, O], O, O, I, I, O, I),
-            Alu {
-                out: vec![O, I, O],
-                zr: O,
-                ng: O
-            }
-        );
+                // !x
+                assert_sim!(sys,
+                    x=&[O, I], y=&[I, I], zx=O, nx=O, zy=I, ny=I, f=O, no=I
+                    => out=[I, O], zr=O, ng=O);
 
-        // !y
-        assert_eq!(
-            Alu::calc(&vec![O, I, O], &vec![I, O, I], I, I, O, O, O, I),
-            Alu {
-                out: vec![O, I, O],
-                zr: O,
-                ng: O
-            }
-        );
+                // !y
+                assert_sim!(sys,
+                    x=&[I, I], y=&[O, I], zx=I, nx=I, zy=O, ny=O, f=O, no=I
+                    => out=[I, O], zr=O, ng=O);
 
-        // -x
-        assert_eq!(
-            Alu::calc(&vec![I, I, O], &vec![I, I, I], O, O, I, I, I, I),
-            Alu {
-                out: vec![I, O, I],
-                zr: O,
-                ng: I
-            }
-        );
+                // -x
+                assert_sim!(sys,
+                    x=&[I, O], y=&[I, I], zx=O, nx=O, zy=I, ny=I, f=I, no=I
+                    => out=[I, I], zr=O, ng=I);
 
-        // -y
-        assert_eq!(
-            Alu::calc(&vec![O, O, O], &vec![I, I, I], I, I, O, O, I, I),
-            Alu {
-                out: vec![I, O, O],
-                zr: O,
-                ng: O
-            }
-        );
+                // -y
+                assert_sim!(sys,
+                    x=&[O, O], y=&[I, I], zx=I, nx=I, zy=O, ny=O, f=I, no=I
+                    => out=[I, O], zr=O, ng=O);
 
-        // x+1
-        assert_eq!(
-            Alu::calc(&vec![I, O, O], &vec![I, I, I], O, I, I, I, I, I),
-            Alu {
-                out: vec![O, I, O],
-                zr: O,
-                ng: O
-            }
-        );
+                // x+1
+                assert_sim!(sys,
+                    x=&[O, O], y=&[O, O], zx=O, nx=I, zy=I, ny=I, f=I, no=I
+                    => out=[I, O], zr=O, ng=O);
 
-        // y+1
-        assert_eq!(
-            Alu::calc(&vec![I, O, O], &vec![I, I, I], I, I, O, I, I, I),
-            Alu {
-                out: vec![O, O, O],
-                zr: I,
-                ng: O
-            }
-        );
+                // y+1
+                assert_sim!(sys,
+                    x=&[O, O], y=&[O, O], zx=I, nx=I, zy=O, ny=I, f=I, no=I
+                    => out=[I, O], zr=O, ng=O);
 
-        // x-1
-        assert_eq!(
-            Alu::calc(&vec![I, O, O], &vec![O, O, O], O, O, I, I, I, O),
-            Alu {
-                out: vec![O, O, O],
-                zr: I,
-                ng: O
-            }
-        );
+                // x-1
+                assert_sim!(sys,
+                    x=&[O, O], y=&[I, O], zx=O, nx=O, zy=I, ny=I, f=I, no=O
+                    => out=[I, I], zr=O, ng=I);
 
-        // y-1
-        assert_eq!(
-            Alu::calc(&vec![I, O, O], &vec![O, O, O], I, I, O, O, I, O),
-            Alu {
-                out: vec![I, I, I],
-                zr: O,
-                ng: I
-            }
-        );
+                // y-1
+                assert_sim!(sys,
+                    x=&[I, O], y=&[O, O], zx=I, nx=I, zy=O, ny=O, f=I, no=O
+                    => out=[I, I], zr=O, ng=I);
 
-        // x+y
-        assert_eq!(
-            Alu::calc(&vec![I, O, O], &vec![O, I, O], O, O, O, O, I, O),
-            Alu {
-                out: vec![I, I, O],
-                zr: O,
-                ng: O
-            }
-        );
+                // x+y
+                assert_sim!(sys,
+                    x=&[I, O], y=&[I, O], zx=O, nx=O, zy=O, ny=O, f=I, no=O
+                    => out=[O, I], zr=O, ng=I);
 
-        // x-y
-        assert_eq!(
-            Alu::calc(&vec![I, O, O], &vec![O, I, O], O, I, O, O, I, I),
-            Alu {
-                out: vec![I, I, I],
-                zr: O,
-                ng: I
-            }
-        );
+                // x-y
+                assert_sim!(sys,
+                    x=&[I, O], y=&[I, O], zx=O, nx=I, zy=O, ny=O, f=I, no=I
+                    => out=[O, O], zr=I, ng=O);
 
-        // y-x
-        assert_eq!(
-            Alu::calc(&vec![I, O, O], &vec![O, I, O], O, O, O, I, I, I),
-            Alu {
-                out: vec![I, O, O],
-                zr: O,
-                ng: O
-            }
-        );
+                // y-x
+                assert_sim!(sys,
+                    x=&[I, O], y=&[I, I], zx=O, nx=O, zy=O, ny=I, f=I, no=I
+                    => out=[O, I], zr=O, ng=I);
 
-        // x&y
-        assert_eq!(
-            Alu::calc(&vec![O, O, I, I], &vec![O, I, O, I], O, O, O, O, O, O),
-            Alu {
-                out: vec![O, O, O, I],
-                zr: O,
-                ng: I
-            }
-        );
+                // x&y
+                assert_sim!(sys,
+                    x=&[I, O], y=&[I, I], zx=O, nx=O, zy=O, ny=O, f=O, no=O
+                    => out=[I, O], zr=O, ng=O);
 
-        // x|y
-        assert_eq!(
-            Alu::calc(&vec![O, O, I, I], &vec![O, I, O, I], O, I, O, I, O, I),
-            Alu {
-                out: vec![O, I, I, I],
-                zr: O,
-                ng: I
+                // x|y
+                assert_sim!(sys,
+                    x=&[I, O], y=&[O, O], zx=O, nx=I, zy=O, ny=I, f=O, no=I
+                    => out=[I, O], zr=O, ng=O);
             }
-        );
+        }
     }
 
     #[test]
     fn test_set_zero() {
-        assert_eq!(set_zero(O, &vec![I, O, I, O]), vec![I, O, I, O]);
-        assert_eq!(set_zero(I, &vec![I, O, I, O]), vec![O, O, O, O]);
+        system! {
+            sys
+            wires { sel }
+            buses { a[4], o[4] }
+            gates {
+                set_zero("zero", a, sel, o);
+            }
+            body {
+                assert_sim!(sys, a=&[O, I, O, I], sel=O => o=&[O, I, O, I]);
+                assert_sim!(sys, a=&[O, I, O, I], sel=I => o=&[O, O, O, O]);
+            }
+        }
     }
 
     #[test]
     fn test_negate() {
-        assert_eq!(negate(O, &vec![I, O, I, O]), vec![I, O, I, O]);
-        assert_eq!(negate(I, &vec![I, O, I, O]), vec![O, I, O, I]);
+        system! {
+            sys
+            wires { sel }
+            buses { a[4], o[4] }
+            gates {
+                negate("negate", a, sel, o);
+            }
+            body {
+                assert_sim!(sys, a=&[O, I, O, I], sel=O => o=&[O, I, O, I]);
+                assert_sim!(sys, a=&[O, I, O, I], sel=I => o=&[I, O, I, O]);
+            }
+        }
     }
 }

@@ -45,6 +45,21 @@ impl<T: Logic> Logic for Vec<T> {
     }
 }
 
+pub fn make_identity(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<Box<str>>,
+    a: &Wire<Bit>,
+    b: &Wire<Bit>,
+) {
+    sb.add_device(name, &[&a], &[&b], move |inp, out| {
+        out.push(match inp {
+            [I] => I,
+            [O] => O,
+            _ => unreachable!(),
+        });
+    })
+}
+
 pub fn make_nand(
     sb: &mut SystemBuilder<Bit>,
     name: impl Into<Box<str>>,
