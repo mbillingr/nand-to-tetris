@@ -40,6 +40,8 @@ pub fn make_adder(
     b: &[Wire<Bit>],
     c: &[Wire<Bit>],
 ) {
+    assert_eq!(a.len(), b.len());
+    assert_eq!(a.len(), c.len());
     let name = name.into();
     let_wires!(carry);
     let mut carry = carry;
@@ -55,6 +57,25 @@ pub fn make_adder(
             ci,
             &new_carry,
         );
+        carry = new_carry;
+    }
+}
+
+pub fn make_incrementer(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &[Wire<Bit>],
+    b: &[Wire<Bit>],
+) {
+    assert_eq!(a.len(), b.len());
+    let name = name.into();
+
+    make_not(sb, format!("{}.add0", name), &a[0], &b[0]);
+    let mut carry = a[0].clone();
+
+    for (i, (ai, bi)) in a.iter().zip(b).enumerate().skip(1) {
+        let_wires!(new_carry);
+        make_half_adder(sb, format!("{}.add{}", name, i), ai, &carry, bi, &new_carry);
         carry = new_carry;
     }
 }
@@ -194,6 +215,27 @@ mod tests {
                 assert_sim!(sys, a=&[I, O, O, O], b=&[I, I, I, O] => c=[O, O, O, I]);
                 assert_sim!(sys, a=&[I, I, I, O], b=&[I, I, I, O] => c=[O, I, I, I]);
                 assert_sim!(sys, a=&[I, I, I, I], b=&[I, I, I, I] => c=[O, I, I, I]);
+            }
+        }
+    }
+
+    #[test]
+    fn test_incrementer() {
+        system! {
+            sys
+            buses { a[3], b[3]}
+            gates {
+                make_incrementer("INC", a, b);
+            }
+            body {
+                assert_sim!(sys, a=&[O, O, O] => b=[I, O, O]);
+                assert_sim!(sys, a=&[I, O, O] => b=[O, I, O]);
+                assert_sim!(sys, a=&[O, I, O] => b=[I, I, O]);
+                assert_sim!(sys, a=&[I, I, O] => b=[O, O, I]);
+                assert_sim!(sys, a=&[O, O, I] => b=[I, O, I]);
+                assert_sim!(sys, a=&[I, O, I] => b=[O, I, I]);
+                assert_sim!(sys, a=&[O, I, I] => b=[I, I, I]);
+                assert_sim!(sys, a=&[I, I, I] => b=[O, O, O]);
             }
         }
     }
