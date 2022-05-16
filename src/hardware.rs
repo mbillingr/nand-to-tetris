@@ -362,6 +362,17 @@ macro_rules! assert_sim {
     };
 }
 
+#[macro_export]
+macro_rules! assert_cycle {
+    ($sys: expr, $($i:ident=$v:expr),* => $($o:ident=$e:expr),*) => {
+        $($i.set($v);)*
+        $sys.simulate();
+        $sys.cycle();
+        $sys.simulate();
+        $(assert_eq!($o.value(), $e);)*
+    };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

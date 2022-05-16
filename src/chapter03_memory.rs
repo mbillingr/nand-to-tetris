@@ -1,14 +1,43 @@
-use crate::hardware::{SystemBuilder, Wire};
-use crate::chapter01_boolean_logic::Bit;
+use crate::chapter01_boolean_logic::{make_mux, Bit};
+use crate::hardware::{ClockHandler, MemoryCell, SystemBuilder, Wire};
+use std::sync::Arc;
+use Bit::O;
 
-pub fn make_register(
+pub fn make_dflipflop(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<Box<str>>,
+    x: &Wire<Bit>,
+    y: &Wire<Bit>,
+) {
+    let name = name.into();
+
+    let memory_cell = Arc::new(MemoryCell::new(O));
+
+    let mc_set = memory_cell.clone();
+    sb.add_device(format!("{}.set", name), &[&x], &[], move |inp, _| {
+        mc_set.load(inp[0])
+    });
+
+    let mc_get = memory_cell.clone();
+    sb.add_device(format!("{}.get", name), &[], &[&y], move |_, out| {
+        out.push(mc_get.fetch())
+    });
+
+    let mc_hnd: Arc<dyn ClockHandler> = memory_cell;
+    sb.add_clock_handler(mc_hnd);
+}
+
+pub fn make_bit_register(
     sb: &mut SystemBuilder<Bit>,
     name: impl Into<String>,
     i: &Wire<Bit>,
     load: &Wire<Bit>,
     o: &Wire<Bit>,
 ) {
-    todo!()
+    let name = name.into();
+    let_wires!(data);
+    make_mux(sb, format!("{}.mux", name), o, i, load, &data);
+    make_dflipflop(sb, format!("{}.dff", name), &data, o);
 }
 
 #[cfg(test)]
@@ -23,26 +52,17 @@ mod tests {
             sys
             wires { i, load, o }
             gates {
-                make_register("REG", i, load, o);
+                make_bit_register("REG", i, load, o);
             }
             body {
-                assert_sim!(sys, i=O, load=O =>);
-                sys.cycle();
-                assert_sim!(sys, i=O, load=O => o=O);
-                sys.cycle();
-                assert_sim!(sys, i=I, load=O => o=O);
-                sys.cycle();
-                assert_sim!(sys, i=O, load=I => o=O);
-                sys.cycle();
-                assert_sim!(sys, i=I, load=I => o=I);
-                sys.cycle();
-                assert_sim!(sys, i=O, load=O => o=I);
-                sys.cycle();
-                assert_sim!(sys, i=I, load=O => o=I);
-                sys.cycle();
-                assert_sim!(sys, i=I, load=I => o=I);
-                sys.cycle();
-                assert_sim!(sys, i=O, load=I => o=O);
+                assert_cycle!(sys, i=O, load=O => o=O);
+                assert_cycle!(sys, i=I, load=O => o=O);
+                assert_cycle!(sys, i=O, load=I => o=O);
+                assert_cycle!(sys, i=I, load=I => o=I);
+                assert_cycle!(sys, i=O, load=O => o=I);
+                assert_cycle!(sys, i=I, load=O => o=I);
+                assert_cycle!(sys, i=I, load=I => o=I);
+                assert_cycle!(sys, i=O, load=I => o=O);
             }
         }
     }
