@@ -1,4 +1,4 @@
-use crate::chapter01_boolean_logic::{make_mux, Bit};
+use crate::chapter01_boolean_logic::{make_and, make_mux, make_mux_bus, make_not, Bit};
 use crate::hardware::{ClockHandler, MemoryCell, SystemBuilder, Wire};
 use std::sync::Arc;
 use Bit::O;
@@ -54,6 +54,37 @@ pub fn make_register(
     }
 }
 
+pub fn make_ramn(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    n: usize,
+    addr: &[Wire<Bit>],
+    x: &[Wire<Bit>],
+    load: &Wire<Bit>,
+    y: &[Wire<Bit>],
+) {
+    assert!(n > 0);
+    assert_eq!(x.len(), y.len());
+    let name = name.into();
+    let width = x.len();
+
+    let sel = &addr[n - 1];
+    let_wires!(nsel, load0, load1);
+    make_not(sb, format!("{}.nsel", name), sel, &nsel);
+    make_and(sb, format!("{}.load0", name), &nsel, load, &load0);
+    make_and(sb, format!("{}.load1", name), sel, load, &load1);
+    let_buses!(y0[width], y1[width]);
+    make_mux_bus(sb, format!("{}.output", name), &y0, &y1, sel, y);
+
+    if n == 1 {
+        make_register(sb, format!("{}.word0", name), x, &load0, &y0);
+        make_register(sb, format!("{}.word1", name), x, &load1, &y1);
+    } else {
+        make_ramn(sb, format!("{}.word0", name), n - 1, addr, x, &load0, &y0);
+        make_ramn(sb, format!("{}.word1", name), n - 1, addr, x, &load1, &y1);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -96,6 +127,68 @@ mod tests {
                 assert_cycle!(sys, i=&[I, O], load=I => o=[I, O]);
                 assert_cycle!(sys, i=&[O, O], load=O => o=[I, O]);
                 assert_cycle!(sys, i=&[I, I], load=I => o=[I, I]);
+            }
+        }
+    }
+
+    fn make_ram2(
+        sb: &mut SystemBuilder<Bit>,
+        name: impl Into<String>,
+        addr: &[Wire<Bit>],
+        x: &[Wire<Bit>],
+        load: &Wire<Bit>,
+        y: &[Wire<Bit>],
+    ) {
+        make_ramn(sb, name, 1, addr, x, load, y)
+    }
+
+    #[test]
+    fn test_ram2() {
+        system! {
+            sys
+            wires { load }
+            buses { i[2], o[2], addr[1] }
+            gates {
+                make_ram2("REG", addr, i, load, o);
+            }
+            body {
+                assert_cycle!(sys, addr=&[O], i=&[O, I], load=O => o=[O, O]);
+                assert_cycle!(sys, addr=&[I], i=&[O, I], load=O => o=[O, O]);
+                assert_cycle!(sys, addr=&[O], i=&[I, I], load=I => o=[I, I]);
+                assert_cycle!(sys, addr=&[I], i=&[O, I], load=I => o=[O, I]);
+                assert_cycle!(sys, addr=&[O], i=&[O, O], load=O => o=[I, I]);
+                assert_cycle!(sys, addr=&[I], i=&[O, O], load=O => o=[O, I]);
+            }
+        }
+    }
+
+    fn make_ram8(
+        sb: &mut SystemBuilder<Bit>,
+        name: impl Into<String>,
+        addr: &[Wire<Bit>],
+        x: &[Wire<Bit>],
+        load: &Wire<Bit>,
+        y: &[Wire<Bit>],
+    ) {
+        make_ramn(sb, name, 3, addr, x, load, y)
+    }
+
+    #[test]
+    fn test_ram8() {
+        system! {
+            sys
+            wires { load }
+            buses { i[2], o[2], addr[3] }
+            gates {
+                make_ram8("REG", addr, i, load, o);
+            }
+            body {
+                assert_cycle!(sys, addr=&[O, O, O], i=&[O, I], load=O => o=[O, O]);
+                assert_cycle!(sys, addr=&[O, I, O], i=&[O, I], load=O => o=[O, O]);
+                assert_cycle!(sys, addr=&[O, O, O], i=&[I, I], load=I => o=[I, I]);
+                assert_cycle!(sys, addr=&[O, I, O], i=&[O, I], load=I => o=[O, I]);
+                assert_cycle!(sys, addr=&[O, O, O], i=&[O, O], load=O => o=[I, I]);
+                assert_cycle!(sys, addr=&[O, I, O], i=&[O, O], load=O => o=[O, I]);
             }
         }
     }
