@@ -85,6 +85,20 @@ pub fn make_ramn(
     }
 }
 
+pub fn make_counter(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    load: &Wire<Bit>,
+    inc: &Wire<Bit>,
+    reset: &Wire<Bit>,
+    inval: &[Wire<Bit>],
+    out: &[Wire<Bit>],
+) {
+    assert_eq!(inval.len(), out.len());
+    let name = name.into();
+    todo!()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -189,6 +203,30 @@ mod tests {
                 assert_cycle!(sys, addr=&[O, I, O], i=&[O, I], load=I => o=[O, I]);
                 assert_cycle!(sys, addr=&[O, O, O], i=&[O, O], load=O => o=[I, I]);
                 assert_cycle!(sys, addr=&[O, I, O], i=&[O, O], load=O => o=[O, I]);
+            }
+        }
+    }
+
+    #[test]
+    fn test_counter() {
+        system! {
+            sys
+            wires { load, inc, reset }
+            buses { i[2], o[2] }
+            gates {
+                make_counter("REG", load, inc, reset, i, o);
+            }
+            body {
+                assert_cycle!(sys, i=&[O, O], load=O, inc=O, reset=I => o=[O, O]);  // start resetted
+                assert_cycle!(sys, i=&[O, O], load=O, inc=I, reset=O => o=[I, O]);  // normal counting
+                assert_cycle!(sys, i=&[O, O], load=O, inc=I, reset=O => o=[O, I]);  // ...
+                assert_cycle!(sys, i=&[O, O], load=O, inc=I, reset=O => o=[I, I]);  // ...
+                assert_cycle!(sys, i=&[O, O], load=O, inc=I, reset=O => o=[O, O]);  // ...
+                assert_cycle!(sys, i=&[I, I], load=I, inc=O, reset=O => o=[I, I]);  // load a value
+                assert_cycle!(sys, i=&[O, I], load=I, inc=O, reset=O => o=[O, I]);  // load another value
+                assert_cycle!(sys, i=&[O, O], load=O, inc=O, reset=O => o=[O, I]);  // do nothing
+                assert_cycle!(sys, i=&[I, I], load=I, inc=I, reset=I => o=[O, O]);  // reset has highest precedence
+                assert_cycle!(sys, i=&[I, I], load=I, inc=I, reset=O => o=[I, I]);  // load has precedence over inc
             }
         }
     }
