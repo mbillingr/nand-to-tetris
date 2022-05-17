@@ -188,7 +188,7 @@ mod tests {
             wires { load }
             buses { i[2], o[2], addr[1] }
             gates {
-                make_ram2("REG", addr, i, load, o);
+                make_ram2("RAM", addr, i, load, o);
             }
             body {
                 assert_cycle!(sys, addr=&[O], i=&[O, I], load=O => o=[O, O]);
@@ -219,7 +219,7 @@ mod tests {
             wires { load }
             buses { i[2], o[2], addr[3] }
             gates {
-                make_ram8("REG", addr, i, load, o);
+                make_ram8("RAM", addr, i, load, o);
             }
             body {
                 assert_cycle!(sys, addr=&[O, O, O], i=&[O, I], load=O => o=[O, O]);
