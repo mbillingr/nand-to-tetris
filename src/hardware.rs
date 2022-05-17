@@ -51,6 +51,14 @@ impl<T> Clone for Wire<T> {
     }
 }
 
+impl<T> Eq for Wire<T> {}
+
+impl<T> Hash for Wire<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        Arc::as_ptr(&self.0).hash(state)
+    }
+}
+
 impl<T> PartialEq for Wire<T> {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
@@ -201,17 +209,22 @@ impl<T> Debug for Device<T> {
 }
 
 impl<T> Device<T> {
-    fn depends_on(&self, other: &Self) -> bool {
-        for inp in &self.inputs {
-            if other.outputs.contains(inp) {
-                return true;
-            }
-        }
-        false
-    }
-
     fn id(&self) -> DeviceId<T> {
         DeviceId(Arc::as_ptr(&self.function))
+    }
+}
+
+struct WiredDevices<'a, T> {
+    source: Option<&'a Device<T>>,
+    targets: Vec<&'a Device<T>>,
+}
+
+impl<T> Default for WiredDevices<'_, T> {
+    fn default() -> Self {
+        WiredDevices {
+            source: None,
+            targets: vec![],
+        }
     }
 }
 
@@ -221,16 +234,33 @@ pub struct DeviceGraph<T> {
 
 impl<T> DeviceGraph<T> {
     fn new(devices: &[Device<T>]) -> Self {
-        let mut dependencies = HashMap::new();
-
-        for dev1 in devices {
-            let mut deps = HashSet::new();
-            for dev2 in devices {
-                if dev1.depends_on(dev2) {
-                    deps.insert(dev2.id());
-                }
+        let mut wire_map: HashMap<&Wire<T>, WiredDevices<T>> = HashMap::new();
+        for dev in devices {
+            for wout in &dev.outputs {
+                let entry = wire_map.entry(wout).or_insert(WiredDevices::default());
+                assert!(entry.source.is_none());
+                entry.source = Some(dev);
             }
-            dependencies.insert(dev1.id(), deps);
+            for win in &dev.inputs {
+                let entry = wire_map.entry(win).or_insert(WiredDevices::default());
+                entry.targets.push(dev);
+            }
+        }
+
+        let mut dependencies = HashMap::new();
+        for dev in devices {
+            dependencies.insert(dev.id(), HashSet::new());
+        }
+
+        for WiredDevices { source, targets } in wire_map.values() {
+            if source.is_none() {
+                continue;
+            }
+            let sid = source.unwrap().id();
+
+            for tgt in targets {
+                dependencies.get_mut(&tgt.id()).unwrap().insert(sid);
+            }
         }
 
         DeviceGraph { dependencies }
