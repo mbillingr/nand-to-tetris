@@ -155,6 +155,20 @@ pub fn make_and_bus(
     }
 }
 
+pub fn make_and_bit_bus(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    a: &Wire<Bit>,
+    b: &[Wire<Bit>],
+    o: &[Wire<Bit>],
+) {
+    let name = name.into();
+    assert_eq!(b.len(), o.len());
+    for (k, (bi, oi)) in b.iter().zip(o).enumerate() {
+        make_and(sb, format!("{}.and[{}]", name, k), a, bi, oi);
+    }
+}
+
 pub fn make_or_bus(
     sb: &mut SystemBuilder<Bit>,
     name: impl Into<String>,
@@ -309,6 +323,18 @@ pub fn make_demux_multi(
         &outputs[0],
         &outputs[1],
     );
+}
+
+pub fn make_broadcast(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    input: &Wire<Bit>,
+    out: &[Wire<Bit>],
+) {
+    let name = name.into();
+    for (k, o) in out.iter().enumerate() {
+        make_identity(sb, format!("{}[{}]", name, k), input, o);
+    }
 }
 
 #[cfg(test)]
@@ -640,6 +666,22 @@ mod tests {
                 assert_sim!(sys, input=I, sel=&[I, O, I] => out=[O, O, O, O, O, I, O, O]);
                 assert_sim!(sys, input=I, sel=&[I, I, O] => out=[O, O, O, O, O, O, I, O]);
                 assert_sim!(sys, input=I, sel=&[I, I, I] => out=[O, O, O, O, O, O, O, I]);
+            }
+        }
+    }
+
+    #[test]
+    fn broadcast() {
+        system! {
+            sys
+            wires { input }
+            buses { out[3] }
+            gates {
+                make_broadcast("BC", input, out);
+            }
+            body {
+                assert_sim!(sys, input=O => out=[O, O, O]);
+                assert_sim!(sys, input=I => out=[I, I, I]);
             }
         }
     }

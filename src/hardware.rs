@@ -4,6 +4,29 @@ use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
+pub fn make_constant<T: 'static + Copy>(
+    sb: &mut SystemBuilder<T>,
+    name: impl Into<Box<str>>,
+    value: T,
+    out: &Wire<T>,
+) {
+    sb.add_device(name, &[], &[&out], move |_, out| {
+        out.push(value);
+    })
+}
+
+pub fn make_constant_uniform_bus<T: 'static + Copy>(
+    sb: &mut SystemBuilder<T>,
+    name: impl Into<Box<str>>,
+    value: T,
+    out: &[Wire<T>],
+) {
+    let name = name.into();
+    for (k, o) in out.iter().enumerate() {
+        make_constant(sb, format!("{}[{}]", name, k), value, o)
+    }
+}
+
 pub trait ClockHandler {
     fn cycle(&self);
 }

@@ -1,4 +1,7 @@
-use crate::chapter01_boolean_logic::{make_and, make_mux, make_mux_bus, make_not, Bit};
+use crate::chapter01_boolean_logic::{
+    make_and, make_and_bit_bus, make_mux, make_mux_bus, make_not, make_or_reduce, Bit,
+};
+use crate::chapter02_boolean_arithmetic::make_incrementer;
 use crate::hardware::{ClockHandler, MemoryCell, SystemBuilder, Wire};
 use std::sync::Arc;
 use Bit::O;
@@ -95,8 +98,30 @@ pub fn make_counter(
     out: &[Wire<Bit>],
 ) {
     assert_eq!(inval.len(), out.len());
+    let width = out.len();
     let name = name.into();
-    todo!()
+
+    let_wires!(set);
+    make_or_reduce(
+        sb,
+        format!("{}.set", name),
+        &[load.clone(), reset.clone(), inc.clone()],
+        &set,
+    );
+
+    let_wires!(not_reset);
+    make_not(sb, format!("{}.not-reset", name), reset, &not_reset);
+
+    let_buses!(incr[width]);
+    make_incrementer(sb, format!("{}.inc", name), out, &incr);
+
+    let_buses!(value[width]);
+    make_mux_bus(sb, format!("{}.old/new", name), &incr, inval, load, &value);
+
+    let_buses!(setval[width]);
+    make_and_bit_bus(sb, format!("{}.value", name), &not_reset, &value, &setval);
+
+    make_register(sb, format!("{}.state", name), &setval, &set, &out);
 }
 
 #[cfg(test)]
