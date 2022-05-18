@@ -3,6 +3,7 @@ pub mod hardware;
 pub mod chapter01_boolean_logic;
 pub mod chapter02_boolean_arithmetic;
 pub mod chapter03_memory;
+pub mod chapter05_computer_architecture;
 
 #[cfg(test)]
 mod tests {
