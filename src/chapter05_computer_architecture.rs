@@ -15,6 +15,7 @@ pub struct Cpu {
     d_load: Wire<Bit>,
     d_src: Vec<Wire<Bit>>,
     d_val: Vec<Wire<Bit>>,
+    jump: Wire<Bit>,
 }
 
 pub fn make_cpu(
@@ -136,6 +137,7 @@ pub fn make_cpu(
         d_load: d_load.clone(),
         d_src: d_src.to_vec(),
         d_val,
+        jump,
     }
 }
 
@@ -414,10 +416,27 @@ mod tests {
                          outaddr=[I, O, I, O, O, I, I, O, O, O, O, I, I, I, I], write=O);
                 // an unconditional jump sets the program counter to the value of A
                 assert_cycle!(sys,
-                    instruction=&[I, I, I, O, O, O, O, I, O, I, O, I, O, I, I, I] =>
-                         outaddr=[I, I, I, I, I, I, I, I, I, I, I, I, I, I, I],
-                            pc = [I, I, I, I, I, I, I, I, I, I, I, I, I, I, I],
+                    instruction=&op!((0);JMP) =>
+                         outaddr=[I, O, I, O, O, I, I, O, O, O, O, I, I, I, I],
+                            pc = [I, O, I, O, O, I, I, O, O, O, O, I, I, I, I],
                          write=O);
+                assert_eq!(cpu.jump.value(), I);
+
+                // jump if M > 0
+                assert_sim!(sys, instruction=&op!((M);JGT), inval=&NEG16 =>);
+                assert_eq!(cpu.jump.value(), O);
+                assert_sim!(sys, instruction=&op!((M);JGT), inval=&Z16 =>);
+                assert_eq!(cpu.jump.value(), O);
+                assert_sim!(sys, instruction=&op!((M);JGT), inval=&ONE16 =>);
+                assert_eq!(cpu.jump.value(), I);
+
+                // jump if M = 0
+                assert_sim!(sys, instruction=&op!((M);JEQ), inval=&NEG16 =>);
+                assert_eq!(cpu.jump.value(), O);
+                assert_sim!(sys, instruction=&op!((M);JEQ), inval=&Z16 =>);
+                assert_eq!(cpu.jump.value(), I);
+                assert_sim!(sys, instruction=&op!((M);JEQ), inval=&ONE16 =>);
+                assert_eq!(cpu.jump.value(), O);
 
                 todo!("jumps")
             }
