@@ -14,7 +14,7 @@ pub fn make_dflipflop(
 ) {
     let name = name.into();
 
-    let memory_cell = Arc::new(MemoryCell::new(O));
+    let memory_cell = Arc::new(MemoryCell::new(name.clone(), O));
 
     let mc_set = memory_cell.clone();
     sb.add_device(format!("{}.set", name), &[&x], &[], move |inp, _| {

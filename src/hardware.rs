@@ -37,11 +37,19 @@ impl<T: Fn()> ClockHandler for T {
     }
 }
 
-pub struct Wire<T>(Arc<Cell<T>>);
+pub struct Wire<T>(Arc<(Cell<T>, Cell<bool>)>);
 
 impl<T> Wire<T> {
     pub fn new(init: T) -> Self {
-        Wire(Arc::new(Cell::new(init)))
+        Wire(Arc::new((Cell::new(init), Cell::new(false))))
+    }
+
+    pub fn watch(&self, w: bool) {
+        self.0 .1.set(w);
+    }
+
+    fn watched(&self) -> bool {
+        self.0 .1.get()
     }
 }
 
@@ -65,13 +73,16 @@ impl<T> PartialEq for Wire<T> {
     }
 }
 
-impl<T: Copy> Wire<T> {
+impl<T: Debug + Copy> Wire<T> {
     pub fn value(&self) -> T {
-        self.0.get()
+        self.0 .0.get()
     }
 
     pub fn set(&self, value: T) {
-        self.0.set(value)
+        if self.watched() {
+            println!("{:?} {:?} -> {:?}", self, self.0 .0.get(), value);
+        }
+        self.0 .0.set(value)
     }
 }
 
@@ -86,7 +97,7 @@ pub trait BusApi<T> {
     fn set(&self, value: &[T]);
 }
 
-impl<T: Copy> BusApi<T> for Vec<Wire<T>> {
+impl<T: Debug + Copy> BusApi<T> for Vec<Wire<T>> {
     fn value(&self) -> Vec<T> {
         self.iter().map(|wire| wire.value()).collect()
     }
@@ -319,11 +330,16 @@ pub struct System<T> {
 
 impl<T> Debug for System<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "<System with {} devices>", self.devices.len())
+        write!(
+            f,
+            "<System with {} devices and {} clock handlers>",
+            self.devices.len(),
+            self.clock_handlers.len()
+        )
     }
 }
 
-impl<T: Copy> System<T> {
+impl<T: Debug + Copy> System<T> {
     pub fn simulate(&self) {
         for dev in &self.devices {
             let inp: Vec<T> = dev.inputs.iter().map(Wire::value).collect();
@@ -347,11 +363,13 @@ impl<T> ClockHandler for System<T> {
 pub struct MemoryCell<T> {
     input_buffer: Cell<T>,
     output_buffer: Cell<T>,
+    name: Box<str>,
 }
 
 impl<T: Copy> MemoryCell<T> {
-    pub fn new(init: T) -> Self {
+    pub fn new(name: impl Into<Box<str>>, init: T) -> Self {
         MemoryCell {
+            name: name.into(),
             input_buffer: Cell::new(init),
             output_buffer: Cell::new(init),
         }
@@ -366,9 +384,11 @@ impl<T: Copy> MemoryCell<T> {
     }
 }
 
-impl<T: Copy> ClockHandler for MemoryCell<T> {
+impl<T: Debug + Copy> ClockHandler for MemoryCell<T> {
     fn cycle(&self) {
-        self.output_buffer.set(self.input_buffer.get());
+        let x = self.input_buffer.get();
+        //println!("{} {:?} -> {:?}", self.name, self.output_buffer.get(), x);
+        self.output_buffer.set(x);
     }
 }
 
@@ -390,6 +410,7 @@ macro_rules! let_buses {
 macro_rules! system {
     (
         $sys:ident
+        $(,$gatename:ident)?
         $(wires { $($wire:ident),* })?
         $(buses { $($bus:ident[$width:expr]),* })?
         $(setup { $($setup:tt)* })?
@@ -400,7 +421,8 @@ macro_rules! system {
         $(let_buses!($($bus[$width]),*);)?
         $($($setup)*)?
         let mut sb = SystemBuilder::new();
-        $($gate(&mut sb, $name, $(&$args),*);)*
+        $(let $gatename =)?
+        { $($gate(&mut sb, $name, $(&$args),*));* };
         let $sys = sb.build().unwrap();
         $($checks)*
     }
@@ -408,7 +430,7 @@ macro_rules! system {
 
 #[macro_export]
 macro_rules! assert_sim {
-    ($sys: expr, $($i:ident=$v:expr),* => $($o:ident=$e:expr),*) => {
+    ($sys: expr, $($i:path=$v:expr),* => $($o:path=$e:expr),*) => {
         $($i.set($v);)*
         $sys.simulate();
         $(assert_eq!($o.value(), $e);)*
@@ -417,7 +439,7 @@ macro_rules! assert_sim {
 
 #[macro_export]
 macro_rules! assert_cycle {
-    ($sys: expr, $($i:ident=$v:expr),* => $($o:ident=$e:expr),*) => {
+    ($sys: expr, $($i:path=$v:expr),* => $($o:path=$e:expr),*) => {
         $($i.set($v);)*
         $sys.simulate();
         $sys.cycle();
@@ -509,7 +531,7 @@ mod tests {
         let y = Wire::new(0);
         let z = Wire::new(0);
 
-        let mc = Arc::new(MemoryCell::new(1));
+        let mc = Arc::new(MemoryCell::new("bit", 1));
         let mc1 = mc.clone();
         let mc2 = mc.clone();
         let mch: Arc<dyn ClockHandler> = mc;
