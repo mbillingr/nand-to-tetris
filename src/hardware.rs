@@ -1,4 +1,4 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
@@ -241,6 +241,7 @@ impl<T> Default for WiredDevices<'_, T> {
 
 pub struct DeviceGraph<T> {
     dependencies: HashMap<DeviceId<T>, HashSet<DeviceId<T>>>,
+    depths: RefCell<HashMap<DeviceId<T>, Option<usize>>>,
 }
 
 impl<T> DeviceGraph<T> {
@@ -274,15 +275,25 @@ impl<T> DeviceGraph<T> {
             }
         }
 
-        DeviceGraph { dependencies }
+        DeviceGraph {
+            dependencies,
+            depths: RefCell::new(devices.iter().map(|d| (d.id(), None)).collect()),
+        }
     }
 
     fn dependency_depth(&self, dev: DeviceId<T>) -> usize {
-        self.dependencies[&dev]
+        if let Some(d) = self.depths.borrow()[&dev] {
+            return d;
+        }
+
+        let d = self.dependencies[&dev]
             .iter()
             .map(|&dep| 1 + self.dependency_depth(dep))
             .max()
-            .unwrap_or(0)
+            .unwrap_or(0);
+
+        self.depths.borrow_mut().insert(dev, Some(d));
+        d
     }
 
     fn has_cycle(&self) -> Result<(), DeviceId<T>> {
