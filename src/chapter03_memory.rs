@@ -5,7 +5,7 @@ use crate::chapter02_boolean_arithmetic::{bus_as_number, make_incrementer, numbe
 use crate::hardware::{ClockHandler, MemoryCell, SystemBuilder, Wire};
 use std::cell::RefCell;
 use std::sync::Arc;
-use Bit::O;
+use Bit::{I, O};
 
 pub fn make_dflipflop(
     sb: &mut SystemBuilder<Bit>,

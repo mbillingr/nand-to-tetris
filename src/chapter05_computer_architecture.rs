@@ -3,7 +3,7 @@ use crate::chapter01_boolean_logic::{
     make_and, make_mux_bus, make_not, make_or, make_or_reduce, Bit,
 };
 use crate::chapter02_boolean_arithmetic::make_alu;
-use crate::chapter03_memory::{make_counter, make_primitive_ramn, make_ramn, make_register};
+use crate::chapter03_memory::{make_counter, make_primitive_ramn, make_register};
 use crate::hardware::{make_constant, SystemBuilder, Wire};
 
 pub struct Cpu {
@@ -193,7 +193,7 @@ mod tests {
     #[test]
     fn memory() {
         system! {
-            sys, cpu
+            sys
             wires { load }
             buses { inval[16], addr[15], outval[16] }
             gates {
