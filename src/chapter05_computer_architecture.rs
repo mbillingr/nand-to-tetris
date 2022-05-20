@@ -58,6 +58,10 @@ pub fn make_cpu(
     let dst_d = &ddd[1];
     let dst_a = &ddd[2];
 
+    let jmp_pos = &jjj[0];
+    let jmp_zero = &jjj[1];
+    let jmp_neg = &jjj[2];
+
     let_wires!(a_instruction);
     make_not(
         sb,
@@ -122,9 +126,16 @@ pub fn make_cpu(
         &ng,
     );
 
+    let_wires!(ps, nps);
+    make_or(sb, format!("{}.valnpos?", name), &zr, &ng, &&nps);
+    make_not(sb, format!("{}.valpos?", name), &nps, &ps);
+
     // jump logic (todo: conditional jumps)
-    let_wires!(jump);
-    make_or_reduce(sb, format!("{}.jmp", name), jjj, &jump);
+    let_wires!(jn, jp, jz, jump);
+    make_and(sb, format!("{}.jmp+", name), jmp_pos, &ps, &jp);
+    make_and(sb, format!("{}.jmp0", name), jmp_zero, &zr, &jz);
+    make_and(sb, format!("{}.jmp-", name), jmp_neg, &ng, &jn);
+    make_or_reduce(sb, format!("{}.jmp", name), &[jp, jz, jn], &jump);
 
     // program counter
     make_counter(sb, format!("{}.pc", name), &jump, &one, reset, outaddr, pc);
@@ -267,8 +278,6 @@ mod tests {
                 make_cpu("CPU", instruction, inval, reset, outval, outaddr, write, pc);
             }
             body {
-                println!("{:?}", sys);
-
                 // after resetting, the program counter starts at zero, then increases by 1
                 assert_cycle!(sys, reset=I => write=O, pc=Z15);
                 assert_cycle!(sys, reset=O => write=O, pc=ONE15);
@@ -438,7 +447,37 @@ mod tests {
                 assert_sim!(sys, instruction=&op!((M);JEQ), inval=&ONE16 =>);
                 assert_eq!(cpu.jump.value(), O);
 
-                todo!("jumps")
+                // jump if M >= 0
+                assert_sim!(sys, instruction=&op!((M);JGE), inval=&NEG16 =>);
+                assert_eq!(cpu.jump.value(), O);
+                assert_sim!(sys, instruction=&op!((M);JGE), inval=&Z16 =>);
+                assert_eq!(cpu.jump.value(), I);
+                assert_sim!(sys, instruction=&op!((M);JGE), inval=&ONE16 =>);
+                assert_eq!(cpu.jump.value(), I);
+
+                // jump if M < 0
+                assert_sim!(sys, instruction=&op!((M);JLT), inval=&NEG16 =>);
+                assert_eq!(cpu.jump.value(), I);
+                assert_sim!(sys, instruction=&op!((M);JLT), inval=&Z16 =>);
+                assert_eq!(cpu.jump.value(), O);
+                assert_sim!(sys, instruction=&op!((M);JLT), inval=&ONE16 =>);
+                assert_eq!(cpu.jump.value(), O);
+
+                // jump if M != 0
+                assert_sim!(sys, instruction=&op!((M);JNE), inval=&NEG16 =>);
+                assert_eq!(cpu.jump.value(), I);
+                assert_sim!(sys, instruction=&op!((M);JNE), inval=&Z16 =>);
+                assert_eq!(cpu.jump.value(), O);
+                assert_sim!(sys, instruction=&op!((M);JNE), inval=&ONE16 =>);
+                assert_eq!(cpu.jump.value(), I);
+
+                // jump if M <= 0
+                assert_sim!(sys, instruction=&op!((M);JLE), inval=&NEG16 =>);
+                assert_eq!(cpu.jump.value(), I);
+                assert_sim!(sys, instruction=&op!((M);JLE), inval=&Z16 =>);
+                assert_eq!(cpu.jump.value(), I);
+                assert_sim!(sys, instruction=&op!((M);JLE), inval=&ONE16 =>);
+                assert_eq!(cpu.jump.value(), O);
             }
         }
     }
