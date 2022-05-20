@@ -3,7 +3,7 @@ use crate::chapter01_boolean_logic::{
     make_and, make_mux_bus, make_not, make_or, make_or_reduce, Bit,
 };
 use crate::chapter02_boolean_arithmetic::make_alu;
-use crate::chapter03_memory::{make_counter, make_register};
+use crate::chapter03_memory::{make_counter, make_primitive_ramn, make_ramn, make_register};
 use crate::hardware::{make_constant, SystemBuilder, Wire};
 
 pub struct Cpu {
@@ -151,6 +151,26 @@ pub fn make_cpu(
     }
 }
 
+pub fn make_memory(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    load: &Wire<Bit>,
+    inval: &[Wire<Bit>],
+    addr: &[Wire<Bit>],
+    outval: &[Wire<Bit>],
+) {
+    let name = name.into();
+    make_primitive_ramn(
+        sb,
+        format!("{}.ram16k", name),
+        14,
+        addr,
+        inval,
+        load,
+        outval,
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,6 +189,22 @@ mod tests {
     const AA16: [Bit; 16] = [I, O, O, O, O, O, I, O, I, O, O, O, O, O, I, O]; // ASCII AA
     const DD16: [Bit; 16] = [O, O, I, O, O, O, I, O, O, O, I, O, O, O, I, O]; // ASCII DD
     const MM16: [Bit; 16] = [I, O, I, I, O, O, I, O, I, O, I, I, O, O, I, O]; // ASCII MM
+
+    #[test]
+    fn memory() {
+        system! {
+            sys, cpu
+            wires { load }
+            buses { inval[16], addr[15], outval[16] }
+            gates {
+                make_memory("RAM", load, inval, addr, outval);
+            }
+            body {
+                println!("{:?}", sys);
+                todo!()
+            }
+        }
+    }
 
     macro_rules! op {
         // A-instruction
