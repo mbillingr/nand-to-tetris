@@ -393,6 +393,10 @@ impl<T: Copy> MemoryCell<T> {
     pub fn fetch(&self) -> T {
         self.output_buffer.get()
     }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
 }
 
 impl<T: Debug + Copy> ClockHandler for MemoryCell<T> {

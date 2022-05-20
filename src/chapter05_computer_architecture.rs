@@ -1,21 +1,20 @@
 use crate::chapter01_boolean_logic::Bit::{I, O};
 use crate::chapter01_boolean_logic::{
-    make_and, make_identity, make_mux_bus, make_not, make_or, make_or_reduce, Bit,
+    make_and, make_mux_bus, make_not, make_or, make_or_reduce, Bit,
 };
 use crate::chapter02_boolean_arithmetic::make_alu;
 use crate::chapter03_memory::{make_counter, make_register};
-use crate::hardware::{make_constant, ClockHandler, MemoryCell, SystemBuilder, Wire};
-use std::fmt::format;
+use crate::hardware::{make_constant, SystemBuilder, Wire};
 
 pub struct Cpu {
-    dst_a: Wire<Bit>,
-    a_load: Wire<Bit>,
-    a_src: Vec<Wire<Bit>>,
-    a_val: Vec<Wire<Bit>>,
-    d_load: Wire<Bit>,
-    d_src: Vec<Wire<Bit>>,
-    d_val: Vec<Wire<Bit>>,
-    jump: Wire<Bit>,
+    pub dst_a: Wire<Bit>,
+    pub a_load: Wire<Bit>,
+    pub a_src: Vec<Wire<Bit>>,
+    pub a_val: Vec<Wire<Bit>>,
+    pub d_load: Wire<Bit>,
+    pub d_src: Vec<Wire<Bit>>,
+    pub d_val: Vec<Wire<Bit>>,
+    pub jump: Wire<Bit>,
 }
 
 pub fn make_cpu(
@@ -160,7 +159,6 @@ mod tests {
 
     const Z15: [Bit; 15] = [O; 15];
     const ONE15: [Bit; 15] = [I, O, O, O, O, O, O, O, O, O, O, O, O, O, O];
-    const TWO15: [Bit; 15] = [O, I, O, O, O, O, O, O, O, O, O, O, O, O, O];
     const NEG15: [Bit; 15] = [I, I, I, I, I, I, I, I, I, I, I, I, I, I, I];
     const Z16: [Bit; 16] = [O; 16];
     const ONE16: [Bit; 16] = [I, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O];
