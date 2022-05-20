@@ -1,3 +1,4 @@
+use crate::chapter01_boolean_logic::Bit::{I, O};
 use crate::chapter01_boolean_logic::{
     make_and, make_and_bus, make_identity, make_mux_bus, make_not, make_or, make_or_reduce,
     make_xor, Bit,
@@ -151,6 +152,28 @@ pub fn negate(
     let name = name.into();
     for (k, (i, o)) in input.iter().zip(out).enumerate() {
         make_xor(sb, format!("{}[{}]", name, k), i, sel, o);
+    }
+}
+
+pub fn bus_as_number(bits: &[Bit]) -> u64 {
+    let mut num = 0;
+    for &b in bits.iter().rev() {
+        num *= 2;
+        if b == I {
+            num += 1;
+        }
+    }
+    num
+}
+
+pub fn number_to_bus(mut num: u64, width: usize, bits: &mut Vec<Bit>) {
+    for _ in 0..width {
+        if num % 2 == 1 {
+            bits.push(I);
+        } else {
+            bits.push(O);
+        }
+        num /= 2;
     }
 }
 

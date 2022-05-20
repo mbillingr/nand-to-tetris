@@ -1,8 +1,9 @@
 use crate::chapter01_boolean_logic::{
     make_and, make_and_bit_bus, make_mux, make_mux_bus, make_not, make_or_reduce, Bit,
 };
-use crate::chapter02_boolean_arithmetic::make_incrementer;
+use crate::chapter02_boolean_arithmetic::{bus_as_number, make_incrementer, number_to_bus};
 use crate::hardware::{ClockHandler, MemoryCell, SystemBuilder, Wire};
+use std::cell::RefCell;
 use std::sync::Arc;
 use Bit::O;
 
@@ -86,6 +87,66 @@ pub fn make_ramn(
         make_ramn(sb, format!("{}.word0", name), n - 1, addr, x, &load0, &y0);
         make_ramn(sb, format!("{}.word1", name), n - 1, addr, x, &load1, &y1);
     }
+}
+
+/// build ram as a hardware primitive, which has better performance than constructing it from gates.
+pub fn make_primitive_ramn(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    n: usize,
+    addr: &[Wire<Bit>],
+    x: &[Wire<Bit>],
+    load: &Wire<Bit>,
+    y: &[Wire<Bit>],
+) {
+    assert!(n > 0);
+    assert_eq!(x.len(), y.len());
+    let name = name.into();
+    let width = x.len();
+    let awidth = addr.len();
+
+    let n_words = 2usize.pow(n as u32);
+
+    let mut inputs: Vec<_> = addr.iter().collect();
+    inputs.extend(x);
+    inputs.push(load);
+
+    let outputs: Vec<_> = y.iter().collect();
+
+    let storage = Arc::new(RefCell::new(vec![0u64; n_words]));
+
+    let input_buffer: Arc<RefCell<Option<(usize, u64)>>> = Arc::new(RefCell::new(None));
+
+    let inb = input_buffer.clone();
+    sb.add_device(format!("{}.set", name), &inputs, &[], move |inp, _| {
+        let addr = &inp[0..awidth];
+        let x = &inp[awidth..][..width];
+        let load = *inp.last().unwrap();
+
+        match load {
+            O => *(inb.borrow_mut()) = None,
+            I => {
+                let addr = bus_as_number(addr) as usize;
+                let value = bus_as_number(x);
+                *(inb.borrow_mut()) = Some((addr, value));
+            }
+        }
+    });
+
+    let addr: Vec<_> = addr.iter().collect();
+    let store = storage.clone();
+    sb.add_device(format!("{}.set", name), &addr, &outputs, move |inp, out| {
+        let addr = bus_as_number(inp) as usize;
+        let value = store.borrow()[addr];
+        number_to_bus(value, width, out);
+    });
+
+    let chnd: Arc<dyn ClockHandler> = Arc::new(move || {
+        if let Some((addr, value)) = input_buffer.borrow_mut().take() {
+            storage.borrow_mut()[addr] = value;
+        }
+    });
+    sb.add_clock_handler(chnd);
 }
 
 pub fn make_counter(
@@ -220,6 +281,37 @@ mod tests {
             buses { i[2], o[2], addr[3] }
             gates {
                 make_ram8("RAM", addr, i, load, o);
+            }
+            body {
+                assert_cycle!(sys, addr=&[O, O, O], i=&[O, I], load=O => o=[O, O]);
+                assert_cycle!(sys, addr=&[O, I, O], i=&[O, I], load=O => o=[O, O]);
+                assert_cycle!(sys, addr=&[O, O, O], i=&[I, I], load=I => o=[I, I]);
+                assert_cycle!(sys, addr=&[O, I, O], i=&[O, I], load=I => o=[O, I]);
+                assert_cycle!(sys, addr=&[O, O, O], i=&[O, O], load=O => o=[I, I]);
+                assert_cycle!(sys, addr=&[O, I, O], i=&[O, O], load=O => o=[O, I]);
+            }
+        }
+    }
+
+    fn make_ram16k(
+        sb: &mut SystemBuilder<Bit>,
+        name: impl Into<String>,
+        addr: &[Wire<Bit>],
+        x: &[Wire<Bit>],
+        load: &Wire<Bit>,
+        y: &[Wire<Bit>],
+    ) {
+        make_primitive_ramn(sb, name, 14, addr, x, load, y)
+    }
+
+    #[test]
+    fn test_ram16k() {
+        system! {
+            sys
+            wires { load }
+            buses { i[2], o[2], addr[3] }
+            gates {
+                make_ram16k("RAM", addr, i, load, o);
             }
             body {
                 assert_cycle!(sys, addr=&[O, O, O], i=&[O, I], load=O => o=[O, O]);
