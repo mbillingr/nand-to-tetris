@@ -1,6 +1,7 @@
 use crate::chapter01_boolean_logic::Bit::{I, O};
 use crate::chapter01_boolean_logic::{
-    make_and, make_mux_bus, make_not, make_or, make_or_reduce, Bit,
+    make_and, make_demux_multi, make_mux_bus, make_mux_multi, make_not, make_or, make_or_reduce,
+    Bit,
 };
 use crate::chapter02_boolean_arithmetic::make_alu;
 use crate::chapter03_memory::{make_counter, make_primitive_ramn, make_register};
@@ -160,11 +161,23 @@ pub fn make_memory(
     outval: &[Wire<Bit>],
 ) {
     let name = name.into();
+
+    let ram_addr = &addr[0..14];
+    let sel = &addr[13..15];
+
+    make_mux_multi(
+        sb,
+        format!("{}.ram/dev", name),
+        &[&ram_out, &ram_out, &scr_out, &kbd_out],
+        sel,
+        outval,
+    );
+
     make_primitive_ramn(
         sb,
         format!("{}.ram16k", name),
         14,
-        addr,
+        ram_addr,
         inval,
         load,
         outval,
