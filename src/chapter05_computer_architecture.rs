@@ -1,11 +1,13 @@
 use crate::chapter01_boolean_logic::Bit::{I, O};
 use crate::chapter01_boolean_logic::{
-    make_and, make_demux_multi, make_mux_bus, make_mux_multi, make_not, make_or, make_or_reduce,
-    Bit,
+    make_and, make_mux_bus, make_mux_multi, make_not, make_or, make_or_reduce, Bit,
 };
 use crate::chapter02_boolean_arithmetic::make_alu;
-use crate::chapter03_memory::{make_counter, make_primitive_ramn, make_register};
+use crate::chapter03_memory::{
+    make_counter, make_memory_device, make_primitive_ramn, make_register, MemoryDevice,
+};
 use crate::hardware::{make_constant, SystemBuilder, Wire};
+use std::sync::Arc;
 
 pub struct Cpu {
     pub dst_a: Wire<Bit>,
@@ -159,11 +161,16 @@ pub fn make_memory(
     inval: &[Wire<Bit>],
     addr: &[Wire<Bit>],
     outval: &[Wire<Bit>],
+    screen: &Arc<dyn MemoryDevice>,
+    keyboard: &Arc<dyn MemoryDevice>,
 ) {
+    assert_eq!(inval.len(), outval.len());
     let name = name.into();
+    let width = inval.len();
 
-    let ram_addr = &addr[0..14];
     let sel = &addr[13..15];
+
+    let_buses!(ram_out[width], scr_out[width], kbd_out[width]);
 
     make_mux_multi(
         sb,
@@ -177,10 +184,30 @@ pub fn make_memory(
         sb,
         format!("{}.ram16k", name),
         14,
-        ram_addr,
+        addr,
         inval,
         load,
-        outval,
+        &ram_out,
+    );
+
+    make_memory_device(
+        sb,
+        format!("{}.screen", name),
+        addr,
+        inval,
+        load,
+        &scr_out,
+        screen.clone(),
+    );
+
+    make_memory_device(
+        sb,
+        format!("{}.keyboard", name),
+        addr,
+        inval,
+        load,
+        &kbd_out,
+        keyboard.clone(),
     );
 }
 
@@ -188,6 +215,7 @@ pub fn make_memory(
 mod tests {
     use super::*;
     use crate::hardware::{BusApi, ClockHandler};
+    use std::cell::RefCell;
     use Bit::{I, O};
 
     const Z15: [Bit; 15] = [O; 15];
@@ -203,18 +231,40 @@ mod tests {
     const DD16: [Bit; 16] = [O, O, I, O, O, O, I, O, O, O, I, O, O, O, I, O]; // ASCII DD
     const MM16: [Bit; 16] = [I, O, I, I, O, O, I, O, I, O, I, I, O, O, I, O]; // ASCII MM
 
+    const RAM_FIRST: [Bit; 15] = Z15;
+    const RAM_LAST: [Bit; 15] = [I, I, I, I, I, I, I, I, I, I, I, I, I, I, O];
+
     #[test]
     fn memory() {
+        let screen = Arc::new(RefCell::new(vec![0; 0x2000]));
+        let keyboard = Arc::new(RefCell::new(vec![65; 1]));
+
+        let scr: Arc<dyn MemoryDevice> = screen.clone();
+        let kbd: Arc<dyn MemoryDevice> = keyboard.clone();
+
         system! {
             sys
             wires { load }
             buses { inval[16], addr[15], outval[16] }
             gates {
-                make_memory("RAM", load, inval, addr, outval);
+                make_memory("RAM", load, inval, addr, outval, scr, kbd);
             }
             body {
                 println!("{:?}", sys);
-                todo!()
+
+                // write to first and last RAM addresses ...
+                assert_cycle!(sys, addr=&RAM_FIRST, inval=&AA16, load=I =>);
+                assert_cycle!(sys, addr=&RAM_LAST, inval=&MM16, load=I =>);
+
+                // ... then check if the values can be read back
+                assert_cycle!(sys, addr=&RAM_FIRST, load=O => outval=&AA16);
+                assert_cycle!(sys, addr=&RAM_LAST, load=O => outval=&MM16);
+
+                todo!("write to and read from screen, and check if the value is in the storage");
+
+                todo!("read a character from keyboard");
+
+                todo!("make sure writes to the keyboard are ignored");
             }
         }
     }

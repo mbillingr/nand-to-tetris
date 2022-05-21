@@ -113,11 +113,14 @@ pub trait MemoryDevice {
 
 impl MemoryDevice for RefCell<Vec<u64>> {
     fn store(&self, addr: usize, value: u64) {
-        self.borrow_mut()[addr] = value;
+        let mut mem = self.borrow_mut();
+        let addr = addr % mem.len();
+        mem[addr] = value;
     }
 
     fn fetch(&self, addr: usize) -> u64 {
-        self.borrow()[addr]
+        let mem = self.borrow();
+        mem[addr % mem.len()]
     }
 }
 
