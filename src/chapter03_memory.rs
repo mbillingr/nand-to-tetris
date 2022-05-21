@@ -100,20 +100,46 @@ pub fn make_primitive_ramn(
     y: &[Wire<Bit>],
 ) {
     assert!(n > 0);
+    let n_words = 2usize.pow(n as u32);
+
+    let storage = Arc::new(RefCell::new(vec![0u64; n_words]));
+    make_memory_device(sb, name, addr, x, load, y, storage);
+}
+
+pub trait MemoryDevice {
+    fn store(&self, addr: usize, value: u64);
+    fn fetch(&self, addr: usize) -> u64;
+}
+
+impl MemoryDevice for RefCell<Vec<u64>> {
+    fn store(&self, addr: usize, value: u64) {
+        self.borrow_mut()[addr] = value;
+    }
+
+    fn fetch(&self, addr: usize) -> u64 {
+        self.borrow()[addr]
+    }
+}
+
+pub fn make_memory_device(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    addr: &[Wire<Bit>],
+    x: &[Wire<Bit>],
+    load: &Wire<Bit>,
+    y: &[Wire<Bit>],
+    device: Arc<dyn MemoryDevice>,
+) {
     assert_eq!(x.len(), y.len());
     let name = name.into();
     let width = x.len();
     let awidth = addr.len();
-
-    let n_words = 2usize.pow(n as u32);
 
     let mut inputs: Vec<_> = addr.iter().collect();
     inputs.extend(x);
     inputs.push(load);
 
     let outputs: Vec<_> = y.iter().collect();
-
-    let storage = Arc::new(RefCell::new(vec![0u64; n_words]));
 
     let input_buffer: Arc<RefCell<Option<(usize, u64)>>> = Arc::new(RefCell::new(None));
 
@@ -134,16 +160,16 @@ pub fn make_primitive_ramn(
     });
 
     let addr: Vec<_> = addr.iter().collect();
-    let store = storage.clone();
+    let dev = device.clone();
     sb.add_device(format!("{}.set", name), &addr, &outputs, move |inp, out| {
         let addr = bus_as_number(inp) as usize;
-        let value = store.borrow()[addr];
+        let value = dev.fetch(addr);
         number_to_bus(value, width, out);
     });
 
     let chnd: Arc<dyn ClockHandler> = Arc::new(move || {
         if let Some((addr, value)) = input_buffer.borrow_mut().take() {
-            storage.borrow_mut()[addr] = value;
+            device.store(addr, value);
         }
     });
     sb.add_clock_handler(chnd);
