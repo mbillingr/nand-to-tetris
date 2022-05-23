@@ -1,6 +1,7 @@
 use crate::chapter01_boolean_logic::Bit::{I, O};
 use crate::chapter01_boolean_logic::{
-    make_and, make_mux_bus, make_mux_multi, make_not, make_or, make_or_reduce, Bit,
+    make_and, make_demux_multi, make_mux_bus, make_mux_multi, make_not, make_or, make_or_reduce,
+    Bit,
 };
 use crate::chapter02_boolean_arithmetic::make_alu;
 use crate::chapter03_memory::{
@@ -170,12 +171,33 @@ pub fn make_memory(
 
     let sel = &addr[13..15];
 
+    let_wires!(ram_load, ram0_load, ram1_load, scr_load, kbd_load_ignore);
+    make_demux_multi(
+        sb,
+        format!("{}.load-ram/dev", name),
+        load,
+        sel,
+        &[
+            ram0_load.clone(),
+            scr_load.clone(),
+            ram1_load.clone(),
+            kbd_load_ignore,
+        ],
+    );
+    make_or(
+        sb,
+        format!("{}.load-ram", name),
+        &ram0_load,
+        &ram1_load,
+        &ram_load,
+    );
+
     let_buses!(ram_out[width], scr_out[width], kbd_out[width]);
 
     make_mux_multi(
         sb,
-        format!("{}.ram/dev", name),
-        &[&ram_out, &ram_out, &scr_out, &kbd_out],
+        format!("{}.out-ram/dev", name),
+        &[&ram_out, &scr_out, &ram_out, &kbd_out],
         sel,
         outval,
     );
@@ -186,7 +208,7 @@ pub fn make_memory(
         14,
         addr,
         inval,
-        load,
+        &ram_load,
         &ram_out,
     );
 
@@ -195,17 +217,18 @@ pub fn make_memory(
         format!("{}.screen", name),
         addr,
         inval,
-        load,
+        &scr_load,
         &scr_out,
         screen.clone(),
     );
 
+    let_wires!(kbd_load); // always zero, because we never write to the keyboard
     make_memory_device(
         sb,
         format!("{}.keyboard", name),
         addr,
         inval,
-        load,
+        &kbd_load,
         &kbd_out,
         keyboard.clone(),
     );
@@ -230,9 +253,15 @@ mod tests {
     const AA16: [Bit; 16] = [I, O, O, O, O, O, I, O, I, O, O, O, O, O, I, O]; // ASCII AA
     const DD16: [Bit; 16] = [O, O, I, O, O, O, I, O, O, O, I, O, O, O, I, O]; // ASCII DD
     const MM16: [Bit; 16] = [I, O, I, I, O, O, I, O, I, O, I, I, O, O, I, O]; // ASCII MM
+    const LSB16: [Bit; 16] = [O, O, O, O, O, O, O, O, I, I, I, I, I, I, I, I];
+    const MSB16: [Bit; 16] = [I, I, I, I, I, I, I, I, O, O, O, O, O, O, O, O];
+    const CHAR_A16: [Bit; 16] = [I, O, O, O, O, O, I, O, O, O, O, O, O, O, O, O];
 
-    const RAM_FIRST: [Bit; 15] = Z15;
-    const RAM_LAST: [Bit; 15] = [I, I, I, I, I, I, I, I, I, I, I, I, I, I, O];
+    const ADDR_RAM_FIRST: [Bit; 15] = Z15;
+    const ADDR_RAM_LAST: [Bit; 15] = [I, I, I, I, I, I, I, I, I, I, I, I, I, I, O];
+    const ADDR_SCREEN_FIRST: [Bit; 15] = [O, O, O, O, O, O, O, O, O, O, O, O, O, O, I];
+    const ADDR_SCREEN_2ND: [Bit; 15] = [I, O, O, O, O, O, O, O, O, O, O, O, O, O, I];
+    const ADDR_KEYBOARD: [Bit; 15] = [O, O, O, O, O, O, O, O, O, O, O, O, O, I, I];
 
     #[test]
     fn memory() {
@@ -250,21 +279,32 @@ mod tests {
                 make_memory("RAM", load, inval, addr, outval, scr, kbd);
             }
             body {
-                println!("{:?}", sys);
-
                 // write to first and last RAM addresses ...
-                assert_cycle!(sys, addr=&RAM_FIRST, inval=&AA16, load=I =>);
-                assert_cycle!(sys, addr=&RAM_LAST, inval=&MM16, load=I =>);
+                assert_cycle!(sys, addr=&ADDR_RAM_FIRST, inval=&AA16, load=I =>);
+                assert_cycle!(sys, addr=&ADDR_RAM_LAST, inval=&MM16, load=I =>);
 
                 // ... then check if the values can be read back
-                assert_cycle!(sys, addr=&RAM_FIRST, load=O => outval=&AA16);
-                assert_cycle!(sys, addr=&RAM_LAST, load=O => outval=&MM16);
+                assert_cycle!(sys, addr=&ADDR_RAM_FIRST, load=O => outval=&AA16);
+                assert_cycle!(sys, addr=&ADDR_RAM_LAST, load=O => outval=&MM16);
 
-                todo!("write to and read from screen, and check if the value is in the storage");
+                // writing to RAM does not change SCREEN
+                assert_cycle!(sys, addr=&ADDR_RAM_FIRST, inval=&AA16, load=I =>);
+                assert_cycle!(sys, addr=&ADDR_SCREEN_FIRST, load=O => outval=&Z16);
 
-                todo!("read a character from keyboard");
+                // write to and read from screen, and check if the value is in the storage
+                assert_cycle!(sys, addr=&ADDR_SCREEN_FIRST, inval=&MSB16, load=I =>);
+                assert_cycle!(sys, addr=&ADDR_SCREEN_2ND, inval=&LSB16, load=I =>);
+                assert_cycle!(sys, addr=&ADDR_SCREEN_FIRST, load=O => outval=&MSB16);
+                assert_cycle!(sys, addr=&ADDR_SCREEN_2ND, load=O => outval=&LSB16);
+                assert_eq!(screen.borrow()[0], 0x00FF);
+                assert_eq!(screen.borrow()[1], 0xFF00);
 
-                todo!("make sure writes to the keyboard are ignored");
+                // read a character from the keyboard
+                assert_cycle!(sys, addr=&ADDR_KEYBOARD, load=O => outval=&CHAR_A16);
+
+                // writes to the keyboard are ignored
+                assert_cycle!(sys, addr=&ADDR_KEYBOARD, inval=&Z16, load=I =>);
+                assert_cycle!(sys, addr=&ADDR_KEYBOARD, load=O => outval=&CHAR_A16);
             }
         }
     }
