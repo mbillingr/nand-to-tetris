@@ -155,7 +155,7 @@ pub fn negate(
     }
 }
 
-pub fn bus_as_number(bits: &[Bit]) -> u64 {
+pub fn bus_as_number(bits: &[Bit]) -> u16 {
     let mut num = 0;
     for &b in bits.iter().rev() {
         num *= 2;
@@ -166,7 +166,7 @@ pub fn bus_as_number(bits: &[Bit]) -> u64 {
     num
 }
 
-pub fn number_to_bus(mut num: u64, width: usize, bits: &mut Vec<Bit>) {
+pub fn number_to_bus(mut num: u16, width: usize, bits: &mut Vec<Bit>) {
     for _ in 0..width {
         if num % 2 == 1 {
             bits.push(I);

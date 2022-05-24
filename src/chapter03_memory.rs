@@ -98,27 +98,28 @@ pub fn make_primitive_ramn(
     x: &[Wire<Bit>],
     load: &Wire<Bit>,
     y: &[Wire<Bit>],
-) {
+) -> Arc<RefCell<Vec<u16>>> {
     assert!(n > 0);
     let n_words = 2usize.pow(n as u32);
 
-    let storage = Arc::new(RefCell::new(vec![0u64; n_words]));
-    make_memory_device(sb, name, addr, x, load, y, storage);
+    let storage = Arc::new(RefCell::new(vec![0; n_words]));
+    make_memory_device(sb, name, addr, x, load, y, storage.clone());
+    storage
 }
 
 pub trait MemoryDevice {
-    fn store(&self, addr: usize, value: u64);
-    fn fetch(&self, addr: usize) -> u64;
+    fn store(&self, addr: usize, value: u16);
+    fn fetch(&self, addr: usize) -> u16;
 }
 
-impl MemoryDevice for RefCell<Vec<u64>> {
-    fn store(&self, addr: usize, value: u64) {
+impl MemoryDevice for RefCell<Vec<u16>> {
+    fn store(&self, addr: usize, value: u16) {
         let mut mem = self.borrow_mut();
         let addr = addr % mem.len();
         mem[addr] = value;
     }
 
-    fn fetch(&self, addr: usize) -> u64 {
+    fn fetch(&self, addr: usize) -> u16 {
         let mem = self.borrow();
         mem[addr % mem.len()]
     }
@@ -144,7 +145,7 @@ pub fn make_memory_device(
 
     let outputs: Vec<_> = y.iter().collect();
 
-    let input_buffer: Arc<RefCell<Option<(usize, u64)>>> = Arc::new(RefCell::new(None));
+    let input_buffer: Arc<RefCell<Option<(usize, u16)>>> = Arc::new(RefCell::new(None));
 
     let inb = input_buffer.clone();
     sb.add_device(format!("{}.set", name), &inputs, &[], move |inp, _| {
@@ -176,6 +177,26 @@ pub fn make_memory_device(
         }
     });
     sb.add_clock_handler(chnd);
+}
+
+pub fn make_rom_device(
+    sb: &mut SystemBuilder<Bit>,
+    name: impl Into<String>,
+    addr: &[Wire<Bit>],
+    y: &[Wire<Bit>],
+    data: Arc<Vec<u16>>,
+) {
+    let name = name.into();
+    let width = y.len();
+
+    let inputs: Vec<_> = addr.iter().collect();
+    let outputs: Vec<_> = y.iter().collect();
+
+    sb.add_device(name, &inputs, &outputs, move |inp, out| {
+        let addr = bus_as_number(inp) as usize;
+        let value = data[addr];
+        number_to_bus(value, width, out);
+    });
 }
 
 pub fn make_counter(
@@ -330,7 +351,7 @@ mod tests {
         load: &Wire<Bit>,
         y: &[Wire<Bit>],
     ) {
-        make_primitive_ramn(sb, name, 14, addr, x, load, y)
+        make_primitive_ramn(sb, name, 14, addr, x, load, y);
     }
 
     #[test]

@@ -5,9 +5,11 @@ use crate::chapter01_boolean_logic::{
 };
 use crate::chapter02_boolean_arithmetic::make_alu;
 use crate::chapter03_memory::{
-    make_counter, make_memory_device, make_primitive_ramn, make_register, MemoryDevice,
+    make_counter, make_memory_device, make_primitive_ramn, make_register, make_rom_device,
+    MemoryDevice,
 };
 use crate::hardware::{make_constant, SystemBuilder, Wire};
+use std::cell::RefCell;
 use std::sync::Arc;
 
 pub struct Cpu {
@@ -134,14 +136,29 @@ pub fn make_cpu(
     make_not(sb, format!("{}.valpos?", name), &nps, &ps);
 
     // jump logic (todo: conditional jumps)
-    let_wires!(jn, jp, jz, jump);
+    let_wires!(jn, jp, jz, jump, really_jump);
     make_and(sb, format!("{}.jmp+", name), jmp_pos, &ps, &jp);
     make_and(sb, format!("{}.jmp0", name), jmp_zero, &zr, &jz);
     make_and(sb, format!("{}.jmp-", name), jmp_neg, &ng, &jn);
     make_or_reduce(sb, format!("{}.jmp", name), &[jp, jz, jn], &jump);
+    make_and(
+        sb,
+        format!("{}.jmp?", name),
+        &jump,
+        c_instruction,
+        &really_jump,
+    );
 
     // program counter
-    make_counter(sb, format!("{}.pc", name), &jump, &one, reset, outaddr, pc);
+    make_counter(
+        sb,
+        format!("{}.pc", name),
+        &really_jump,
+        &one,
+        reset,
+        outaddr,
+        pc,
+    );
 
     Cpu {
         dst_a: dst_a.clone(),
@@ -164,7 +181,7 @@ pub fn make_memory(
     outval: &[Wire<Bit>],
     screen: &Arc<dyn MemoryDevice>,
     keyboard: &Arc<dyn MemoryDevice>,
-) {
+) -> Arc<RefCell<Vec<u16>>> {
     assert_eq!(inval.len(), outval.len());
     let name = name.into();
     let width = inval.len();
@@ -202,7 +219,7 @@ pub fn make_memory(
         outval,
     );
 
-    make_primitive_ramn(
+    let ram = make_primitive_ramn(
         sb,
         format!("{}.ram16k", name),
         14,
@@ -232,82 +249,82 @@ pub fn make_memory(
         &kbd_out,
         keyboard.clone(),
     );
+
+    ram
+}
+
+pub struct Computer {
+    ram: Arc<RefCell<Vec<u16>>>,
+    screen: Arc<RefCell<Vec<u16>>>,
+    keyboard: Arc<RefCell<Vec<u16>>>,
+    cpu: Cpu,
+    pc: Vec<Wire<Bit>>,
+    instruction: Vec<Wire<Bit>>,
+}
+
+impl Computer {
+    pub fn new(
+        sb: &mut SystemBuilder<Bit>,
+        name: impl Into<String>,
+        reset: &Wire<Bit>,
+        rom_data: Arc<Vec<u16>>,
+    ) -> Self {
+        let name = name.into();
+
+        let screen = Arc::new(RefCell::new(vec![0; 0x2000]));
+        let keyboard = Arc::new(RefCell::new(vec![65; 1]));
+
+        let_wires!(write_m);
+        let_buses!(out_m[16], in_m[16], addr_m[15]);
+        let_buses!(instruction[16], pc[15]);
+
+        //write_m.watch(true);
+
+        let scr: Arc<dyn MemoryDevice> = screen.clone();
+        let kbd: Arc<dyn MemoryDevice> = keyboard.clone();
+        let ram = make_memory(
+            sb,
+            format!("{}.memory", name),
+            &write_m,
+            &out_m,
+            &addr_m,
+            &in_m,
+            &scr,
+            &kbd,
+        );
+
+        let cpu = make_cpu(
+            sb,
+            format!("{}.cpu", name),
+            &instruction,
+            &in_m,
+            reset,
+            &out_m,
+            &addr_m,
+            &write_m,
+            &pc,
+        );
+
+        make_rom_device(sb, format!("{}.rom", name), &pc, &instruction, rom_data);
+
+        Computer {
+            ram,
+            screen,
+            keyboard,
+            cpu,
+            pc,
+            instruction,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chapter02_boolean_arithmetic::bus_as_number;
     use crate::hardware::{BusApi, ClockHandler};
     use std::cell::RefCell;
     use Bit::{I, O};
-
-    const Z15: [Bit; 15] = [O; 15];
-    const ONE15: [Bit; 15] = [I, O, O, O, O, O, O, O, O, O, O, O, O, O, O];
-    const NEG15: [Bit; 15] = [I, I, I, I, I, I, I, I, I, I, I, I, I, I, I];
-    const Z16: [Bit; 16] = [O; 16];
-    const ONE16: [Bit; 16] = [I, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O];
-    const TWO16: [Bit; 16] = [O, I, O, O, O, O, O, O, O, O, O, O, O, O, O, O];
-    const THREE16: [Bit; 16] = [I, I, O, O, O, O, O, O, O, O, O, O, O, O, O, O];
-    const NEG16: [Bit; 16] = [I, I, I, I, I, I, I, I, I, I, I, I, I, I, I, I];
-    const NTWO16: [Bit; 16] = [O, I, I, I, I, I, I, I, I, I, I, I, I, I, I, I];
-    const AA16: [Bit; 16] = [I, O, O, O, O, O, I, O, I, O, O, O, O, O, I, O]; // ASCII AA
-    const DD16: [Bit; 16] = [O, O, I, O, O, O, I, O, O, O, I, O, O, O, I, O]; // ASCII DD
-    const MM16: [Bit; 16] = [I, O, I, I, O, O, I, O, I, O, I, I, O, O, I, O]; // ASCII MM
-    const LSB16: [Bit; 16] = [O, O, O, O, O, O, O, O, I, I, I, I, I, I, I, I];
-    const MSB16: [Bit; 16] = [I, I, I, I, I, I, I, I, O, O, O, O, O, O, O, O];
-    const CHAR_A16: [Bit; 16] = [I, O, O, O, O, O, I, O, O, O, O, O, O, O, O, O];
-
-    const ADDR_RAM_FIRST: [Bit; 15] = Z15;
-    const ADDR_RAM_LAST: [Bit; 15] = [I, I, I, I, I, I, I, I, I, I, I, I, I, I, O];
-    const ADDR_SCREEN_FIRST: [Bit; 15] = [O, O, O, O, O, O, O, O, O, O, O, O, O, O, I];
-    const ADDR_SCREEN_2ND: [Bit; 15] = [I, O, O, O, O, O, O, O, O, O, O, O, O, O, I];
-    const ADDR_KEYBOARD: [Bit; 15] = [O, O, O, O, O, O, O, O, O, O, O, O, O, I, I];
-
-    #[test]
-    fn memory() {
-        let screen = Arc::new(RefCell::new(vec![0; 0x2000]));
-        let keyboard = Arc::new(RefCell::new(vec![65; 1]));
-
-        let scr: Arc<dyn MemoryDevice> = screen.clone();
-        let kbd: Arc<dyn MemoryDevice> = keyboard.clone();
-
-        system! {
-            sys
-            wires { load }
-            buses { inval[16], addr[15], outval[16] }
-            gates {
-                make_memory("RAM", load, inval, addr, outval, scr, kbd);
-            }
-            body {
-                // write to first and last RAM addresses ...
-                assert_cycle!(sys, addr=&ADDR_RAM_FIRST, inval=&AA16, load=I =>);
-                assert_cycle!(sys, addr=&ADDR_RAM_LAST, inval=&MM16, load=I =>);
-
-                // ... then check if the values can be read back
-                assert_cycle!(sys, addr=&ADDR_RAM_FIRST, load=O => outval=&AA16);
-                assert_cycle!(sys, addr=&ADDR_RAM_LAST, load=O => outval=&MM16);
-
-                // writing to RAM does not change SCREEN
-                assert_cycle!(sys, addr=&ADDR_RAM_FIRST, inval=&AA16, load=I =>);
-                assert_cycle!(sys, addr=&ADDR_SCREEN_FIRST, load=O => outval=&Z16);
-
-                // write to and read from screen, and check if the value is in the storage
-                assert_cycle!(sys, addr=&ADDR_SCREEN_FIRST, inval=&MSB16, load=I =>);
-                assert_cycle!(sys, addr=&ADDR_SCREEN_2ND, inval=&LSB16, load=I =>);
-                assert_cycle!(sys, addr=&ADDR_SCREEN_FIRST, load=O => outval=&MSB16);
-                assert_cycle!(sys, addr=&ADDR_SCREEN_2ND, load=O => outval=&LSB16);
-                assert_eq!(screen.borrow()[0], 0x00FF);
-                assert_eq!(screen.borrow()[1], 0xFF00);
-
-                // read a character from the keyboard
-                assert_cycle!(sys, addr=&ADDR_KEYBOARD, load=O => outval=&CHAR_A16);
-
-                // writes to the keyboard are ignored
-                assert_cycle!(sys, addr=&ADDR_KEYBOARD, inval=&Z16, load=I =>);
-                assert_cycle!(sys, addr=&ADDR_KEYBOARD, load=O => outval=&CHAR_A16);
-            }
-        }
-    }
 
     macro_rules! op {
         // A-instruction
@@ -405,6 +422,132 @@ mod tests {
         (@comp, $bits:expr, (M|D)) => { $bits.extend([I, O, I, O, I, O, I]); };
     }
 
+    const Z15: [Bit; 15] = [O; 15];
+    const ONE15: [Bit; 15] = [I, O, O, O, O, O, O, O, O, O, O, O, O, O, O];
+    const NEG15: [Bit; 15] = [I, I, I, I, I, I, I, I, I, I, I, I, I, I, I];
+    const Z16: [Bit; 16] = [O; 16];
+    const ONE16: [Bit; 16] = [I, O, O, O, O, O, O, O, O, O, O, O, O, O, O, O];
+    const TWO16: [Bit; 16] = [O, I, O, O, O, O, O, O, O, O, O, O, O, O, O, O];
+    const THREE16: [Bit; 16] = [I, I, O, O, O, O, O, O, O, O, O, O, O, O, O, O];
+    const NEG16: [Bit; 16] = [I, I, I, I, I, I, I, I, I, I, I, I, I, I, I, I];
+    const NTWO16: [Bit; 16] = [O, I, I, I, I, I, I, I, I, I, I, I, I, I, I, I];
+    const AA16: [Bit; 16] = [I, O, O, O, O, O, I, O, I, O, O, O, O, O, I, O]; // ASCII AA
+    const DD16: [Bit; 16] = [O, O, I, O, O, O, I, O, O, O, I, O, O, O, I, O]; // ASCII DD
+    const MM16: [Bit; 16] = [I, O, I, I, O, O, I, O, I, O, I, I, O, O, I, O]; // ASCII MM
+    const LSB16: [Bit; 16] = [O, O, O, O, O, O, O, O, I, I, I, I, I, I, I, I];
+    const MSB16: [Bit; 16] = [I, I, I, I, I, I, I, I, O, O, O, O, O, O, O, O];
+    const CHAR_A16: [Bit; 16] = [I, O, O, O, O, O, I, O, O, O, O, O, O, O, O, O];
+
+    const ADDR_RAM_FIRST: [Bit; 15] = Z15;
+    const ADDR_RAM_LAST: [Bit; 15] = [I, I, I, I, I, I, I, I, I, I, I, I, I, I, O];
+    const ADDR_SCREEN_FIRST: [Bit; 15] = [O, O, O, O, O, O, O, O, O, O, O, O, O, O, I];
+    const ADDR_SCREEN_2ND: [Bit; 15] = [I, O, O, O, O, O, O, O, O, O, O, O, O, O, I];
+    const ADDR_KEYBOARD: [Bit; 15] = [O, O, O, O, O, O, O, O, O, O, O, O, O, I, I];
+
+    fn create_computer(sb: &mut SystemBuilder<Bit>, name: &str, reset: &Wire<Bit>) -> Computer {
+        let instructions = [
+            // i = 1
+            bus_as_number(&op!(@101)),
+            bus_as_number(&op!(M = (1))),
+            // sum = 0
+            bus_as_number(&op!(@100)),
+            bus_as_number(&op!(M = (0))),
+            // (LOOP) = 4
+            // if (i > R0) goto STOP
+            bus_as_number(&op!(@101)),
+            bus_as_number(&op!(D = (M))),
+            todo!("code on page 70"),
+        ];
+
+        let mut rom_data = vec![0; 32738];
+        for (r, i) in rom_data.iter_mut().zip(instructions) {
+            *r = i;
+        }
+
+        Computer::new(sb, name, reset, Arc::new(rom_data))
+    }
+
+    #[test]
+    fn computer() {
+        const VAR_SUM: usize = 100;
+        const VAR_I: usize = 101;
+        system! {
+            sys, comp
+            wires { reset }
+            buses { }
+            gates {
+                create_computer("RAM", reset);
+            }
+            body {
+                println!("{:?}", sys);
+                comp.ram.borrow_mut()[0] = 10;
+
+                // reset
+                assert_cycle!(sys, reset=I =>);
+                assert_sim!(sys, reset=O =>);
+
+                // simulate a sufficient number of cycles
+                for i in 1..=64 {
+                    println!("cycle {}", i);
+                    //println!("{}: {:?}", i, &comp.ram.borrow()[..101]);
+                    println!("PC: {:?}", comp.pc.value());
+                    println!(" I: {:?}", comp.instruction.value());
+                    sys.cycle();
+                    sys.simulate();
+                }
+
+                assert_eq!(comp.ram.borrow()[VAR_I], 10);
+                assert_eq!(comp.ram.borrow()[VAR_SUM], 55);
+            }
+        }
+    }
+
+    #[test]
+    fn memory() {
+        let screen = Arc::new(RefCell::new(vec![0; 0x2000]));
+        let keyboard = Arc::new(RefCell::new(vec![65; 1]));
+
+        let scr: Arc<dyn MemoryDevice> = screen.clone();
+        let kbd: Arc<dyn MemoryDevice> = keyboard.clone();
+
+        system! {
+            sys
+            wires { load }
+            buses { inval[16], addr[15], outval[16] }
+            gates {
+                make_memory("RAM", load, inval, addr, outval, scr, kbd);
+            }
+            body {
+                // write to first and last RAM addresses ...
+                assert_cycle!(sys, addr=&ADDR_RAM_FIRST, inval=&AA16, load=I =>);
+                assert_cycle!(sys, addr=&ADDR_RAM_LAST, inval=&MM16, load=I =>);
+
+                // ... then check if the values can be read back
+                assert_cycle!(sys, addr=&ADDR_RAM_FIRST, load=O => outval=&AA16);
+                assert_cycle!(sys, addr=&ADDR_RAM_LAST, load=O => outval=&MM16);
+
+                // writing to RAM does not change SCREEN
+                assert_cycle!(sys, addr=&ADDR_RAM_FIRST, inval=&AA16, load=I =>);
+                assert_cycle!(sys, addr=&ADDR_SCREEN_FIRST, load=O => outval=&Z16);
+
+                // write to and read from screen, and check if the value is in the storage
+                assert_cycle!(sys, addr=&ADDR_SCREEN_FIRST, inval=&MSB16, load=I =>);
+                assert_cycle!(sys, addr=&ADDR_SCREEN_2ND, inval=&LSB16, load=I =>);
+                assert_cycle!(sys, addr=&ADDR_SCREEN_FIRST, load=O => outval=&MSB16);
+                assert_cycle!(sys, addr=&ADDR_SCREEN_2ND, load=O => outval=&LSB16);
+                assert_eq!(screen.borrow()[0], 0x00FF);
+                assert_eq!(screen.borrow()[1], 0xFF00);
+
+                // read a character from the keyboard
+                assert_cycle!(sys, addr=&ADDR_KEYBOARD, load=O => outval=&CHAR_A16);
+
+                // writes to the keyboard are ignored
+                assert_cycle!(sys, addr=&ADDR_KEYBOARD, inval=&Z16, load=I =>);
+                assert_cycle!(sys, addr=&ADDR_KEYBOARD, load=O => outval=&CHAR_A16);
+            }
+        }
+    }
+
     #[test]
     fn test_cpu() {
         system! {
@@ -419,17 +562,22 @@ mod tests {
                 assert_cycle!(sys, reset=I => write=O, pc=Z15);
                 assert_cycle!(sys, reset=O => write=O, pc=ONE15);
 
-                // an A instruction sets the output address (and the A register)
+                // an A instruction sets the output address but not the program counter
+                assert_cycle!(sys,
+                    instruction=&op!(@0b111100001100101) =>
+                         outaddr=[I, O, I, O, O, I, I, O, O, O, O, I, I, I, I],
+                              pc=[O, I, O, O, O, O, O, O, O, O, O, O, O, O, O],
+                           write=O);
 
-                // compute 1 and store it in RAM[A=0]
+                // compute 1 and store it in RAM[A]
                 assert_cycle!(sys,
                     instruction=&op!(M=(1)) =>
-                    outaddr=Z15, write=I, outval=ONE16);
+                    write=I, outval=ONE16);
 
-                // compute 0 and store it in RAM[A=0]
+                // compute 0 and store it in RAM[A]
                 assert_cycle!(sys,
                     instruction=&op!(M=(0)) =>
-                    outaddr=Z15, write=I, outval=Z16);
+                    write=I, outval=Z16);
 
                 // compute -1 and store it in A
                 assert_sim!(sys, instruction=&op!(A=(-1)) => write=O);
