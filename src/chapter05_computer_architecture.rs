@@ -104,10 +104,17 @@ pub fn make_cpu(
     make_register(sb, format!("{}.RA", name), &a_src, &a_load, &a_val);
 
     // D register
-    let d_load = dst_d;
     let d_src = outval;
+    let_wires!(d_load);
     let_buses!(d_val[16]);
-    make_register(sb, format!("{}.RD", name), d_src, d_load, &d_val);
+    make_and(
+        sb,
+        format!("{}.d-load", name),
+        &c_instruction,
+        dst_d,
+        &d_load,
+    );
+    make_register(sb, format!("{}.RD", name), d_src, &d_load, &d_val);
 
     // select alu input
     let_buses!(a_or_m[16]);
@@ -135,7 +142,7 @@ pub fn make_cpu(
     make_or(sb, format!("{}.valnpos?", name), &zr, &ng, &&nps);
     make_not(sb, format!("{}.valpos?", name), &nps, &ps);
 
-    // jump logic (todo: conditional jumps)
+    // jump logic
     let_wires!(jn, jp, jz, jump, really_jump);
     make_and(sb, format!("{}.jmp+", name), jmp_pos, &ps, &jp);
     make_and(sb, format!("{}.jmp0", name), jmp_zero, &zr, &jz);
@@ -165,7 +172,7 @@ pub fn make_cpu(
         a_load,
         a_src,
         a_val,
-        d_load: d_load.clone(),
+        d_load,
         d_src: d_src.to_vec(),
         d_val,
         jump,
@@ -254,12 +261,13 @@ pub fn make_memory(
 }
 
 pub struct Computer {
-    ram: Arc<RefCell<Vec<u16>>>,
-    screen: Arc<RefCell<Vec<u16>>>,
-    keyboard: Arc<RefCell<Vec<u16>>>,
-    cpu: Cpu,
-    pc: Vec<Wire<Bit>>,
-    instruction: Vec<Wire<Bit>>,
+    pub ram: Arc<RefCell<Vec<u16>>>,
+    pub screen: Arc<RefCell<Vec<u16>>>,
+    pub keyboard: Arc<RefCell<Vec<u16>>>,
+    pub cpu: Cpu,
+    pub pc: Vec<Wire<Bit>>,
+    pub instruction: Vec<Wire<Bit>>,
+    pub memval: Vec<Wire<Bit>>,
 }
 
 impl Computer {
@@ -314,6 +322,7 @@ impl Computer {
             cpu,
             pc,
             instruction,
+            memval: in_m,
         }
     }
 }
@@ -436,6 +445,7 @@ mod tests {
     const MM16: [Bit; 16] = [I, O, I, I, O, O, I, O, I, O, I, I, O, O, I, O]; // ASCII MM
     const LSB16: [Bit; 16] = [O, O, O, O, O, O, O, O, I, I, I, I, I, I, I, I];
     const MSB16: [Bit; 16] = [I, I, I, I, I, I, I, I, O, O, O, O, O, O, O, O];
+    const MAX_SIGNED_16: [Bit; 16] = [I, I, I, I, I, I, I, I, I, I, I, I, I, I, I, O];
     const CHAR_A16: [Bit; 16] = [I, O, O, O, O, O, I, O, O, O, O, O, O, O, O, O];
 
     const ADDR_RAM_FIRST: [Bit; 15] = Z15;
@@ -456,7 +466,31 @@ mod tests {
             // if (i > R0) goto STOP
             bus_as_number(&op!(@101)),
             bus_as_number(&op!(D = (M))),
-            todo!("code on page 70"),
+            bus_as_number(&op!(@0)),
+            bus_as_number(&op!(D = (D - M))),
+            bus_as_number(&op!(@20)),
+            bus_as_number(&op!((D);JGT)),
+            // sum += i
+            bus_as_number(&op!(@100)),
+            bus_as_number(&op!(D = (M))),
+            bus_as_number(&op!(@101)),
+            bus_as_number(&op!(D = (D + M))),
+            bus_as_number(&op!(@100)),
+            bus_as_number(&op!(M = (D))),
+            bus_as_number(&op!(@101)),
+            bus_as_number(&op!(M = (M + 1))),
+            // goto LOOP
+            bus_as_number(&op!(@4)),
+            bus_as_number(&op!((0);JMP)),
+            // (STOP) = 20
+            // R1 = sum
+            bus_as_number(&op!(@100)),
+            bus_as_number(&op!(D = (M))),
+            bus_as_number(&op!(@1)),
+            bus_as_number(&op!(M = (D))),
+            // (END) = 24
+            bus_as_number(&op!(@24)),
+            bus_as_number(&op!((0);JMP)),
         ];
 
         let mut rom_data = vec![0; 32738];
@@ -479,7 +513,6 @@ mod tests {
                 create_computer("RAM", reset);
             }
             body {
-                println!("{:?}", sys);
                 comp.ram.borrow_mut()[0] = 10;
 
                 // reset
@@ -487,17 +520,14 @@ mod tests {
                 assert_sim!(sys, reset=O =>);
 
                 // simulate a sufficient number of cycles
-                for i in 1..=64 {
-                    println!("cycle {}", i);
-                    //println!("{}: {:?}", i, &comp.ram.borrow()[..101]);
-                    println!("PC: {:?}", comp.pc.value());
-                    println!(" I: {:?}", comp.instruction.value());
+                for _ in 1..=175 {
                     sys.cycle();
                     sys.simulate();
                 }
 
-                assert_eq!(comp.ram.borrow()[VAR_I], 10);
+                assert_eq!(comp.ram.borrow()[VAR_I], 11);
                 assert_eq!(comp.ram.borrow()[VAR_SUM], 55);
+                assert_eq!(comp.ram.borrow()[1], 55);
             }
         }
     }
@@ -568,6 +598,12 @@ mod tests {
                          outaddr=[I, O, I, O, O, I, I, O, O, O, O, I, I, I, I],
                               pc=[O, I, O, O, O, O, O, O, O, O, O, O, O, O, O],
                            write=O);
+
+                // an A instruction does not set any other register
+                assert_cycle!(sys, instruction=&op!(D=(0)) =>);
+                assert_cycle!(sys, instruction=&op!(@0b111111111111111) => );
+                assert_eq!(cpu.a_val.value(), MAX_SIGNED_16);
+                assert_eq!(cpu.d_val.value(), Z16);
 
                 // compute 1 and store it in RAM[A]
                 assert_cycle!(sys,

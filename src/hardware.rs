@@ -101,6 +101,7 @@ impl<T: Debug + Copy> BusApi<T> for Vec<Wire<T>> {
     fn value(&self) -> Vec<T> {
         self.iter().map(|wire| wire.value()).collect()
     }
+
     fn set(&self, values: &[T]) {
         for (wire, &value) in self.iter().zip(values) {
             wire.set(value)
