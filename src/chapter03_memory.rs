@@ -4,7 +4,7 @@ use crate::chapter01_boolean_logic::{
 use crate::chapter02_boolean_arithmetic::{bus_as_number, make_incrementer, number_to_bus};
 use crate::hardware::{ClockHandler, MemoryCell, SystemBuilder, Wire};
 use std::cell::RefCell;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use Bit::{I, O};
 
 pub fn make_dflipflop(
@@ -98,11 +98,11 @@ pub fn make_primitive_ramn(
     x: &[Wire<Bit>],
     load: &Wire<Bit>,
     y: &[Wire<Bit>],
-) -> Arc<RefCell<Vec<u16>>> {
+) -> Arc<RwLock<Vec<u16>>> {
     assert!(n > 0);
     let n_words = 2usize.pow(n as u32);
 
-    let storage = Arc::new(RefCell::new(vec![0; n_words]));
+    let storage = Arc::new(RwLock::new(vec![0; n_words]));
     make_memory_device(sb, name, addr, x, load, y, storage.clone());
     storage
 }
@@ -110,6 +110,19 @@ pub fn make_primitive_ramn(
 pub trait MemoryDevice {
     fn store(&self, addr: usize, value: u16);
     fn fetch(&self, addr: usize) -> u16;
+}
+
+impl MemoryDevice for RwLock<Vec<u16>> {
+    fn store(&self, addr: usize, value: u16) {
+        let mut mem = self.write().unwrap();
+        let addr = addr % mem.len();
+        mem[addr] = value;
+    }
+
+    fn fetch(&self, addr: usize) -> u16 {
+        let mem = self.read().unwrap();
+        mem[addr % mem.len()]
+    }
 }
 
 impl MemoryDevice for RefCell<Vec<u16>> {

@@ -3,14 +3,14 @@ use crate::chapter01_boolean_logic::{
     make_and, make_demux_multi, make_mux_bus, make_mux_multi, make_not, make_or, make_or_reduce,
     Bit,
 };
-use crate::chapter02_boolean_arithmetic::make_alu;
+use crate::chapter02_boolean_arithmetic::{make_alu, number_to_bus};
 use crate::chapter03_memory::{
     make_counter, make_memory_device, make_primitive_ramn, make_register, make_rom_device,
     MemoryDevice,
 };
 use crate::hardware::{make_constant, SystemBuilder, Wire};
-use std::cell::RefCell;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+use std::thread::JoinHandle;
 
 pub struct Cpu {
     pub dst_a: Wire<Bit>,
@@ -188,7 +188,7 @@ pub fn make_memory(
     outval: &[Wire<Bit>],
     screen: &Arc<dyn MemoryDevice>,
     keyboard: &Arc<dyn MemoryDevice>,
-) -> Arc<RefCell<Vec<u16>>> {
+) -> Arc<RwLock<Vec<u16>>> {
     assert_eq!(inval.len(), outval.len());
     let name = name.into();
     let width = inval.len();
@@ -261,9 +261,9 @@ pub fn make_memory(
 }
 
 pub struct Computer {
-    pub ram: Arc<RefCell<Vec<u16>>>,
-    pub screen: Arc<RefCell<Vec<u16>>>,
-    pub keyboard: Arc<RefCell<Vec<u16>>>,
+    pub ram: Arc<RwLock<Vec<u16>>>,
+    pub screen: Arc<RwLock<Vec<u16>>>,
+    pub keyboard: Arc<RwLock<Vec<u16>>>,
     pub cpu: Cpu,
     pub pc: Vec<Wire<Bit>>,
     pub instruction: Vec<Wire<Bit>>,
@@ -279,8 +279,8 @@ impl Computer {
     ) -> Self {
         let name = name.into();
 
-        let screen = Arc::new(RefCell::new(vec![0; 0x2000]));
-        let keyboard = Arc::new(RefCell::new(vec![65; 1]));
+        let screen = Arc::new(RwLock::new(vec![0; 0x2000]));
+        let keyboard = Arc::new(RwLock::new(vec![65; 1]));
 
         let_wires!(write_m);
         let_buses!(out_m[16], in_m[16], addr_m[15]);
@@ -325,6 +325,50 @@ impl Computer {
             memval: in_m,
         }
     }
+}
+
+pub fn make_screen(screen_memory: Arc<RwLock<Vec<u16>>>) -> JoinHandle<()> {
+    use minifb::{Key, Window, WindowOptions};
+    use std::thread;
+
+    const WIDTH: usize = 512;
+    const HEIGHT: usize = 256;
+
+    thread::spawn(move || {
+        let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
+
+        let mut window = Window::new(
+            "Test - ESC to exit",
+            WIDTH,
+            HEIGHT,
+            WindowOptions::default(),
+        )
+        .unwrap();
+
+        let mut block_buffer = Vec::with_capacity(16);
+
+        while window.is_open() && !window.is_key_down(Key::Escape) {
+            for (pixels, &block) in buffer
+                .chunks_mut(16)
+                .zip(screen_memory.read().unwrap().iter())
+            {
+                block_buffer.clear();
+                number_to_bus(block, 16, &mut block_buffer);
+                for (px, &bit) in pixels.iter_mut().zip(&block_buffer) {
+                    match bit {
+                        I => *px = 0x00000000,
+                        O => *px = 0xFFFFFFFF,
+                    }
+                }
+            }
+
+            // Limit to max ~60 fps update rate
+            window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
+
+            // We unwrap here as we want this code to exit if it fails. Real applications may want to handle this in a different way
+            window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
+        }
+    })
 }
 
 #[cfg(test)]
@@ -513,7 +557,10 @@ mod tests {
                 create_computer("RAM", reset);
             }
             body {
-                comp.ram.borrow_mut()[0] = 10;
+                // todo: remove this useless screen demo... maybe make an "example" instead?
+                let win = make_screen(comp.screen.clone());
+
+                comp.ram.write().unwrap()[0] = 10;
 
                 // reset
                 assert_cycle!(sys, reset=I =>);
@@ -525,9 +572,11 @@ mod tests {
                     sys.simulate();
                 }
 
-                assert_eq!(comp.ram.borrow()[VAR_I], 11);
-                assert_eq!(comp.ram.borrow()[VAR_SUM], 55);
-                assert_eq!(comp.ram.borrow()[1], 55);
+                assert_eq!(comp.ram.read().unwrap()[VAR_I], 11);
+                assert_eq!(comp.ram.read().unwrap()[VAR_SUM], 55);
+                assert_eq!(comp.ram.read().unwrap()[1], 55);
+
+                win.join().unwrap();
             }
         }
     }
