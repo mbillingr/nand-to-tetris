@@ -327,7 +327,10 @@ impl Computer {
     }
 }
 
-pub fn make_screen(screen_memory: Arc<RwLock<Vec<u16>>>) -> JoinHandle<()> {
+pub fn make_screen(
+    screen_memory: Arc<RwLock<Vec<u16>>>,
+    keyboard_memory: Arc<RwLock<Vec<u16>>>,
+) -> JoinHandle<()> {
     use minifb::{Key, Window, WindowOptions};
     use std::thread;
 
@@ -345,9 +348,20 @@ pub fn make_screen(screen_memory: Arc<RwLock<Vec<u16>>>) -> JoinHandle<()> {
         )
         .unwrap();
 
+        window.set_key_repeat_delay(0.0);
+        window.set_key_repeat_rate(0.0);
+
         let mut block_buffer = Vec::with_capacity(16);
 
         while window.is_open() && !window.is_key_down(Key::Escape) {
+            let mut key = 0;
+            for k in window.get_keys() {
+                match k {
+                    _ => key = 128,
+                }
+            }
+            keyboard_memory.write().unwrap()[0] = key;
+
             for (pixels, &block) in buffer
                 .chunks_mut(16)
                 .zip(screen_memory.read().unwrap().iter())
@@ -371,6 +385,105 @@ pub fn make_screen(screen_memory: Arc<RwLock<Vec<u16>>>) -> JoinHandle<()> {
     })
 }
 
+#[macro_export]
+macro_rules! op {
+    // A-instruction
+    (@$value:expr) => {{
+        assert!($value >= 0);
+        assert!($value <= 32767);
+        let mut n: u16 = $value;
+        let mut v = Vec::with_capacity(16);
+        for _ in 0..15 {
+            if n % 2 == 1 {
+                v.push(Bit::I);
+            } else {
+                v.push(Bit::O);
+            }
+            n /= 2;
+        }
+        v.push(O);
+        v
+    }};
+
+    // C-instruction (full)
+    ($dest:tt = $comp:tt ; $jump:tt) => {{
+        let mut op = Vec::with_capacity(16);
+        op!(@jump, op, $jump);
+        op!(@dest, op, $dest);
+        op!(@comp, op, $comp);
+        op.extend([I, I, I]);
+        op
+    }};
+
+    // C-instruction (without jump)
+    ($dest:tt = $comp:tt) => {
+        op!($dest = $comp ; null)
+    };
+
+    // C-instruction (without destination)
+    ($comp:tt ; $jump:tt) => {{
+        op!(null =  $comp ; $jump)
+    }};
+
+    // C-instruction (bare computation)
+    ($comp:tt) => {{
+        op!(null = $comp ; null)
+    }};
+
+    (@jump, $bits:expr, null) => { $bits.extend([O, O, O]); };
+    (@jump, $bits:expr, JGT) => { $bits.extend([I, O, O]); };
+    (@jump, $bits:expr, JEQ) => { $bits.extend([O, I, O]); };
+    (@jump, $bits:expr, JGE) => { $bits.extend([I, I, O]); };
+    (@jump, $bits:expr, JLT) => { $bits.extend([O, O, I]); };
+    (@jump, $bits:expr, JNE) => { $bits.extend([I, O, I]); };
+    (@jump, $bits:expr, JLE) => { $bits.extend([O, I, I]); };
+    (@jump, $bits:expr, JMP) => { $bits.extend([I, I, I]); };
+
+    (@dest, $bits:expr, null) => { $bits.extend([O, O, O]); };
+    (@dest, $bits:expr,    M) => { $bits.extend([I, O, O]); };
+    (@dest, $bits:expr,    D) => { $bits.extend([O, I, O]); };
+    (@dest, $bits:expr,   DM) => { $bits.extend([O, I, I]); };
+    (@dest, $bits:expr,    A) => { $bits.extend([O, O, I]); };
+    (@dest, $bits:expr,   AM) => { $bits.extend([I, O, I]); };
+    (@dest, $bits:expr,   AD) => { $bits.extend([O, I, I]); };
+    (@dest, $bits:expr,  ADM) => { $bits.extend([I, I, I]); };
+
+    (@comp, $bits:expr, (0)) => { $bits.extend([O, I, O, I, O, I, O]); };
+    (@comp, $bits:expr, (1)) => { $bits.extend([I, I, I, I, I, I, O]); };
+    (@comp, $bits:expr, (-1)) => { $bits.extend([O, I, O, I, I, I, O]); };
+    (@comp, $bits:expr, (D)) => { $bits.extend([O, O, I, I, O, O, O]); };
+    (@comp, $bits:expr, (A)) => { $bits.extend([O, O, O, O, I, I, O]); };
+    (@comp, $bits:expr, (M)) => { $bits.extend([O, O, O, O, I, I, I]); };
+    (@comp, $bits:expr, (!D)) => { $bits.extend([I, O, I, I, O, O, O]); };
+    (@comp, $bits:expr, (!A)) => { $bits.extend([I, O, O, O, I, I, O]); };
+    (@comp, $bits:expr, (!M)) => { $bits.extend([I, O, O, O, I, I, I]); };
+    (@comp, $bits:expr, (-D)) => { $bits.extend([I, I, I, I, O, O, O]); };
+    (@comp, $bits:expr, (-A)) => { $bits.extend([I, I, O, O, I, I, O]); };
+    (@comp, $bits:expr, (-M)) => { $bits.extend([I, I, O, O, I, I, I]); };
+    (@comp, $bits:expr, (D+1)) => { $bits.extend([I, I, I, I, I, O, O]); };
+    (@comp, $bits:expr, (A+1)) => { $bits.extend([I, I, I, O, I, I, O]); };
+    (@comp, $bits:expr, (M+1)) => { $bits.extend([I, I, I, O, I, I, I]); };
+    (@comp, $bits:expr, (D-1)) => { $bits.extend([O, I, I, I, O, O, O]); };
+    (@comp, $bits:expr, (A-1)) => { $bits.extend([O, I, O, O, I, I, O]); };
+    (@comp, $bits:expr, (M-1)) => { $bits.extend([O, I, O, O, I, I, I]); };
+    (@comp, $bits:expr, (D+A)) => { $bits.extend([O, I, O, O, O, O, O]); };
+    (@comp, $bits:expr, (A+D)) => { $bits.extend([O, I, O, O, O, O, O]); };
+    (@comp, $bits:expr, (D+M)) => { $bits.extend([O, I, O, O, O, O, I]); };
+    (@comp, $bits:expr, (M+D)) => { $bits.extend([O, I, O, O, O, O, I]); };
+    (@comp, $bits:expr, (D-A)) => { $bits.extend([I, I, O, O, I, O, O]); };
+    (@comp, $bits:expr, (D-M)) => { $bits.extend([I, I, O, O, I, O, I]); };
+    (@comp, $bits:expr, (A-D)) => { $bits.extend([I, I, I, O, O, O, O]); };
+    (@comp, $bits:expr, (M-D)) => { $bits.extend([I, I, I, O, O, O, I]); };
+    (@comp, $bits:expr, (D&A)) => { $bits.extend([O, O, O, O, O, O, O]); };
+    (@comp, $bits:expr, (A&D)) => { $bits.extend([O, O, O, O, O, O, O]); };
+    (@comp, $bits:expr, (D&M)) => { $bits.extend([O, O, O, O, O, O, I]); };
+    (@comp, $bits:expr, (M&D)) => { $bits.extend([O, O, O, O, O, O, I]); };
+    (@comp, $bits:expr, (D|A)) => { $bits.extend([I, O, I, O, I, O, O]); };
+    (@comp, $bits:expr, (A|D)) => { $bits.extend([I, O, I, O, I, O, O]); };
+    (@comp, $bits:expr, (D|M)) => { $bits.extend([I, O, I, O, I, O, I]); };
+    (@comp, $bits:expr, (M|D)) => { $bits.extend([I, O, I, O, I, O, I]); };
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -378,102 +491,6 @@ mod tests {
     use crate::hardware::{BusApi, ClockHandler};
     use std::cell::RefCell;
     use Bit::{I, O};
-
-    macro_rules! op {
-        // A-instruction
-        (@$value:expr) => {{
-            assert!($value >= 0);
-            assert!($value <= 32767);
-            let mut n: u16 = $value;
-            let mut v = Vec::with_capacity(16);
-            for _ in 0..15 {
-                if n % 2 == 1 {
-                    v.push(Bit::I);
-                } else {
-                    v.push(Bit::O);
-                }
-                n /= 2;
-            }
-            v.push(O);
-            v
-        }};
-
-        // C-instruction (full)
-        ($dest:tt = $comp:tt ; $jump:tt) => {{
-            let mut op = Vec::with_capacity(16);
-            op!(@jump, op, $jump);
-            op!(@dest, op, $dest);
-            op!(@comp, op, $comp);
-            op.extend([I, I, I]);
-            op
-        }};
-
-        // C-instruction (without jump)
-        ($dest:tt = $comp:tt) => {
-            op!($dest = $comp ; null)
-        };
-
-        // C-instruction (without destination)
-        ($comp:tt ; $jump:tt) => {{
-            op!(null =  $comp ; $jump)
-        }};
-
-        // C-instruction (bare computation)
-        ($comp:tt) => {{
-            op!(null = $comp ; null)
-        }};
-
-        (@jump, $bits:expr, null) => { $bits.extend([O, O, O]); };
-        (@jump, $bits:expr, JGT) => { $bits.extend([I, O, O]); };
-        (@jump, $bits:expr, JEQ) => { $bits.extend([O, I, O]); };
-        (@jump, $bits:expr, JGE) => { $bits.extend([I, I, O]); };
-        (@jump, $bits:expr, JLT) => { $bits.extend([O, O, I]); };
-        (@jump, $bits:expr, JNE) => { $bits.extend([I, O, I]); };
-        (@jump, $bits:expr, JLE) => { $bits.extend([O, I, I]); };
-        (@jump, $bits:expr, JMP) => { $bits.extend([I, I, I]); };
-
-        (@dest, $bits:expr, null) => { $bits.extend([O, O, O]); };
-        (@dest, $bits:expr,    M) => { $bits.extend([I, O, O]); };
-        (@dest, $bits:expr,    D) => { $bits.extend([O, I, O]); };
-        (@dest, $bits:expr,   DM) => { $bits.extend([O, I, I]); };
-        (@dest, $bits:expr,    A) => { $bits.extend([O, O, I]); };
-        (@dest, $bits:expr,   AM) => { $bits.extend([I, O, I]); };
-        (@dest, $bits:expr,   AD) => { $bits.extend([O, I, I]); };
-        (@dest, $bits:expr,  ADM) => { $bits.extend([I, I, I]); };
-
-        (@comp, $bits:expr, (0)) => { $bits.extend([O, I, O, I, O, I, O]); };
-        (@comp, $bits:expr, (1)) => { $bits.extend([I, I, I, I, I, I, O]); };
-        (@comp, $bits:expr, (-1)) => { $bits.extend([O, I, O, I, I, I, O]); };
-        (@comp, $bits:expr, (D)) => { $bits.extend([O, O, I, I, O, O, O]); };
-        (@comp, $bits:expr, (A)) => { $bits.extend([O, O, O, O, I, I, O]); };
-        (@comp, $bits:expr, (M)) => { $bits.extend([O, O, O, O, I, I, I]); };
-        (@comp, $bits:expr, (!D)) => { $bits.extend([I, O, I, I, O, O, O]); };
-        (@comp, $bits:expr, (!A)) => { $bits.extend([I, O, O, O, I, I, O]); };
-        (@comp, $bits:expr, (!M)) => { $bits.extend([I, O, O, O, I, I, I]); };
-        (@comp, $bits:expr, (-D)) => { $bits.extend([I, I, I, I, O, O, O]); };
-        (@comp, $bits:expr, (-A)) => { $bits.extend([I, I, O, O, I, I, O]); };
-        (@comp, $bits:expr, (-M)) => { $bits.extend([I, I, O, O, I, I, I]); };
-        (@comp, $bits:expr, (D+1)) => { $bits.extend([I, I, I, I, I, O, O]); };
-        (@comp, $bits:expr, (A+1)) => { $bits.extend([I, I, I, O, I, I, O]); };
-        (@comp, $bits:expr, (M+1)) => { $bits.extend([I, I, I, O, I, I, I]); };
-        (@comp, $bits:expr, (D-1)) => { $bits.extend([O, I, I, I, O, O, O]); };
-        (@comp, $bits:expr, (A-1)) => { $bits.extend([O, I, O, O, I, I, O]); };
-        (@comp, $bits:expr, (M-1)) => { $bits.extend([O, I, O, O, I, I, I]); };
-        (@comp, $bits:expr, (D+A)) => { $bits.extend([O, I, O, O, O, O, O]); };
-        (@comp, $bits:expr, (A+D)) => { $bits.extend([O, I, O, O, O, O, O]); };
-        (@comp, $bits:expr, (D+M)) => { $bits.extend([O, I, O, O, O, O, I]); };
-        (@comp, $bits:expr, (M+D)) => { $bits.extend([O, I, O, O, O, O, I]); };
-        (@comp, $bits:expr, (D-A)) => { $bits.extend([I, I, O, O, I, O, O]); };
-        (@comp, $bits:expr, (D-M)) => { $bits.extend([I, I, O, O, I, O, I]); };
-        (@comp, $bits:expr, (A-D)) => { $bits.extend([I, I, I, O, O, O, O]); };
-        (@comp, $bits:expr, (M-D)) => { $bits.extend([I, I, I, O, O, O, I]); };
-        (@comp, $bits:expr, (D&A)) => { $bits.extend([O, O, O, O, O, O, O]); };
-        (@comp, $bits:expr, (A&D)) => { $bits.extend([O, O, O, O, O, O, O]); };
-        (@comp, $bits:expr, (D&M)) => { $bits.extend([O, O, O, O, O, O, I]); };
-        (@comp, $bits:expr, (M&D)) => { $bits.extend([O, O, O, O, O, O, I]); };
-        (@comp, $bits:expr, (D|M)) => { $bits.extend([I, O, I, O, I, O, I]); };
-        (@comp, $bits:expr, (M|D)) => { $bits.extend([I, O, I, O, I, O, I]); };
-    }
 
     const Z15: [Bit; 15] = [O; 15];
     const ONE15: [Bit; 15] = [I, O, O, O, O, O, O, O, O, O, O, O, O, O, O];
@@ -496,6 +513,7 @@ mod tests {
     const ADDR_RAM_LAST: [Bit; 15] = [I, I, I, I, I, I, I, I, I, I, I, I, I, I, O];
     const ADDR_SCREEN_FIRST: [Bit; 15] = [O, O, O, O, O, O, O, O, O, O, O, O, O, O, I];
     const ADDR_SCREEN_2ND: [Bit; 15] = [I, O, O, O, O, O, O, O, O, O, O, O, O, O, I];
+    const ADDR_SCREEN_LAST: [Bit; 15] = [I, I, I, I, I, I, I, I, I, I, I, I, I, O, I];
     const ADDR_KEYBOARD: [Bit; 15] = [O, O, O, O, O, O, O, O, O, O, O, O, O, I, I];
 
     fn create_computer(sb: &mut SystemBuilder<Bit>, name: &str, reset: &Wire<Bit>) -> Computer {
@@ -554,12 +572,9 @@ mod tests {
             wires { reset }
             buses { }
             gates {
-                create_computer("RAM", reset);
+                create_computer("HACK", reset);
             }
             body {
-                // todo: remove this useless screen demo... maybe make an "example" instead?
-                let win = make_screen(comp.screen.clone());
-
                 comp.ram.write().unwrap()[0] = 10;
 
                 // reset
@@ -575,8 +590,6 @@ mod tests {
                 assert_eq!(comp.ram.read().unwrap()[VAR_I], 11);
                 assert_eq!(comp.ram.read().unwrap()[VAR_SUM], 55);
                 assert_eq!(comp.ram.read().unwrap()[1], 55);
-
-                win.join().unwrap();
             }
         }
     }
@@ -612,10 +625,13 @@ mod tests {
                 // write to and read from screen, and check if the value is in the storage
                 assert_cycle!(sys, addr=&ADDR_SCREEN_FIRST, inval=&MSB16, load=I =>);
                 assert_cycle!(sys, addr=&ADDR_SCREEN_2ND, inval=&LSB16, load=I =>);
+                assert_cycle!(sys, addr=&ADDR_SCREEN_LAST, inval=&NEG16, load=I =>);
                 assert_cycle!(sys, addr=&ADDR_SCREEN_FIRST, load=O => outval=&MSB16);
                 assert_cycle!(sys, addr=&ADDR_SCREEN_2ND, load=O => outval=&LSB16);
+                assert_cycle!(sys, addr=&ADDR_SCREEN_LAST, load=O => outval=&NEG16);
                 assert_eq!(screen.borrow()[0], 0x00FF);
                 assert_eq!(screen.borrow()[1], 0xFF00);
+                assert_eq!(*screen.borrow().last().unwrap(), 0xFFFF);
 
                 // read a character from the keyboard
                 assert_cycle!(sys, addr=&ADDR_KEYBOARD, load=O => outval=&CHAR_A16);
