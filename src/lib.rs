@@ -5,6 +5,7 @@ pub mod chapter02_boolean_arithmetic;
 pub mod chapter03_memory;
 pub mod chapter05_computer_architecture;
 pub mod chapter06_assembler;
+pub mod computer_emulator;
 
 #[cfg(test)]
 mod tests {
