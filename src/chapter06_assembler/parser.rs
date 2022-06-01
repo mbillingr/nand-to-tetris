@@ -12,6 +12,7 @@ impl<'s> Parser<'s> {
         let code_lines: Box<dyn Iterator<Item = _>> = Box::new(
             source
                 .lines()
+                .map(Self::strip_comments)
                 .map(|line| line.trim())
                 .enumerate()
                 .map(|(nr, line)| (nr + 1, line))
@@ -50,7 +51,14 @@ impl<'s> Parser<'s> {
     }
 
     fn is_code_line((_, line): &(usize, &str)) -> bool {
-        !line.is_empty() && !line.starts_with("//")
+        !line.is_empty()
+    }
+
+    fn strip_comments(line: &str) -> &str {
+        match line.split_once("//") {
+            Some((left, _comment)) => left,
+            None => line,
+        }
     }
 }
 
@@ -386,6 +394,13 @@ mod tests {
     #[test]
     fn skip_leading_comments() {
         let mut parser = Parser::new("//comment\ncommand");
+        parser.advance();
+        assert_eq!(parser.current_instruction, Some("command"));
+    }
+
+    #[test]
+    fn strip_trailing_comment_from_command() {
+        let mut parser = Parser::new("command   // comment");
         parser.advance();
         assert_eq!(parser.current_instruction, Some("command"));
     }
