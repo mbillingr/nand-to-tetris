@@ -38,10 +38,15 @@ impl<'s> Parser<'s> {
     }
 
     pub fn instruction(&self) -> Result<Instruction, String> {
-        self.current_instruction
+        let instruction = self
+            .current_instruction
             .ok_or_else(|| "unexpected end of input".into())
-            .and_then(Instruction::parse)
-            .map_err(|msg| format!("line {}: {}", self.current_line, msg))
+            .and_then(Instruction::parse);
+        self.add_line_to_error(instruction)
+    }
+
+    pub fn add_line_to_error<T>(&self, r: Result<T, String>) -> Result<T, String> {
+        r.map_err(|msg| format!("line {}: {}", self.current_line, msg))
     }
 
     fn is_code_line((_, line): &(usize, &str)) -> bool {
