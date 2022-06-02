@@ -1,9 +1,10 @@
-use nand_to_tetris::computer_emulator::Computer;
+use nand_to_tetris::computer_emulator::{Computer, IoDevice};
 /**
 Read binary ROM content (such as emitted by hasm) from stdin and run it in the hack emulator.
  **/
 use std::io;
 use std::io::Read;
+use std::sync::Arc;
 
 fn main() -> Result<(), String> {
     let mut buffer = vec![];
@@ -18,7 +19,10 @@ fn main() -> Result<(), String> {
         rom_data.push(u16::from_str_radix(line, 2).map_err(|e| e.to_string())?);
     }
 
+    let iodev = Arc::new(IoDevice::new());
+
     let mut emu = Computer::new(rom_data);
+    emu.set_io(iodev.clone());
 
     emu.run();
 
@@ -35,6 +39,10 @@ fn main() -> Result<(), String> {
             x,
             x
         );
+    }
+
+    if let Ok(iodev) = Arc::try_unwrap(iodev) {
+        iodev.join()?;
     }
 
     Ok(())

@@ -1,11 +1,28 @@
+use crate::chapter01_boolean_logic::Bit::{I, O};
+use crate::chapter02_boolean_arithmetic::{bus_as_number, number_to_bus};
+use minifb::{Window, WindowOptions};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
+use std::thread;
+use std::thread::JoinHandle;
+
+pub trait IoCallback {
+    fn write_screen(&self, addr: u16, value: u16);
+    fn read_screen(&self, addr: u16) -> u16;
+    fn read_keyboard(&self) -> u16;
+    fn is_disconnected(&self) -> bool;
+}
 
 pub struct Computer {
     stop: Arc<AtomicBool>,
     rom: Vec<u16>,
     ram: Vec<u16>,
+    io: Arc<dyn IoCallback>,
 }
+
+const SCREEN_START_ADDR: u16 = 0x4000;
+const SCREEN_END_ADDR: u16 = 0x6000;
+const KEYBOARD_ADDR: u16 = 0x6000;
 
 impl Computer {
     pub fn new(rom: Vec<u16>) -> Self {
@@ -13,11 +30,36 @@ impl Computer {
             stop: Arc::new(AtomicBool::new(false)),
             rom,
             ram: vec![0; 65536],
+            io: Arc::new(()),
         }
+    }
+
+    pub fn set_io(&mut self, device: Arc<dyn IoCallback>) {
+        self.io = device;
     }
 
     pub fn get_ram(&self, addr: u16) -> u16 {
         self.ram[addr as usize]
+    }
+
+    fn read_memory(&self, addr: u16) -> u16 {
+        if (SCREEN_START_ADDR..SCREEN_END_ADDR).contains(&addr) {
+            return self.io.read_screen(addr - SCREEN_START_ADDR);
+        }
+
+        if addr == KEYBOARD_ADDR {
+            return self.io.read_keyboard();
+        }
+
+        self.ram[addr as usize]
+    }
+
+    fn write_memory(&mut self, addr: u16, value: u16) {
+        if (SCREEN_START_ADDR..SCREEN_END_ADDR).contains(&addr) {
+            return self.io.write_screen(addr - SCREEN_START_ADDR, value);
+        }
+
+        self.ram[addr as usize] = value
     }
 
     pub fn run(&mut self) {
@@ -26,6 +68,10 @@ impl Computer {
         let mut d = 0;
 
         loop {
+            if self.io.is_disconnected() {
+                return;
+            }
+
             if self.stop.load(Ordering::Relaxed) {
                 return;
             }
@@ -41,7 +87,7 @@ impl Computer {
                 pc += 1;
             } else {
                 let mut x = d;
-                let mut y = if use_mem(op) { self.ram[a as usize] } else { a };
+                let mut y = if use_mem(op) { self.read_memory(a) } else { a };
 
                 if zero_x(op) {
                     x = 0;
@@ -70,7 +116,7 @@ impl Computer {
                 }
 
                 if set_m(op) {
-                    self.ram[a as usize] = z;
+                    self.write_memory(a, z);
                 }
 
                 if set_d(op) {
@@ -93,6 +139,22 @@ impl Computer {
                 }
             }
         }
+    }
+}
+
+impl IoCallback for () {
+    fn write_screen(&self, _: u16, _: u16) {}
+
+    fn read_screen(&self, _: u16) -> u16 {
+        0
+    }
+
+    fn read_keyboard(&self) -> u16 {
+        0
+    }
+
+    fn is_disconnected(&self) -> bool {
+        false
     }
 }
 
@@ -150,6 +212,129 @@ fn jump_eq(op: u16) -> bool {
 
 fn jump_gt(op: u16) -> bool {
     (op & 0b0000000000000001) != 0
+}
+
+pub struct IoDevice {
+    join_handle: JoinHandle<()>,
+    command: mpsc::Sender<IoCommand>,
+    response: mpsc::Receiver<u16>,
+}
+
+#[derive(Debug)]
+enum IoCommand {
+    SetScreen(u16, u16),
+    GetScreen(u16),
+    GetKeyboard,
+}
+
+impl IoDevice {
+    pub fn new() -> Self {
+        const WIDTH: usize = 512;
+        const HEIGHT: usize = 256;
+        const PIXELS_PER_WORD: usize = 16;
+        const BLACK: u32 = 0x00000000;
+        const WHITE: u32 = 0xFFFFFFFF;
+
+        let (command_tx, command_rx) = mpsc::channel();
+        let (response_tx, response_rx) = mpsc::channel();
+
+        let join_handle = thread::spawn(move || {
+            let mut buffer: Vec<u32> = vec![WHITE; WIDTH * HEIGHT];
+
+            let mut window =
+                Window::new("Hack Emulator", WIDTH, HEIGHT, WindowOptions::default()).unwrap();
+
+            let mut pixel_block_buffer = Vec::with_capacity(PIXELS_PER_WORD);
+
+            while window.is_open() {
+                while let Ok(cmd) = command_rx.try_recv() {
+                    match cmd {
+                        IoCommand::SetScreen(addr, value) => {
+                            pixel_block_buffer.clear();
+                            number_to_bus(value, PIXELS_PER_WORD, &mut pixel_block_buffer);
+
+                            let pixel_offset = addr as usize * PIXELS_PER_WORD;
+                            let pixels = &mut buffer[pixel_offset..pixel_offset + PIXELS_PER_WORD];
+
+                            for (px, &bit) in pixels.iter_mut().zip(&pixel_block_buffer) {
+                                match bit {
+                                    I => *px = BLACK,
+                                    O => *px = WHITE,
+                                }
+                            }
+                        }
+
+                        IoCommand::GetScreen(addr) => {
+                            let pixel_offset = addr as usize / PIXELS_PER_WORD;
+                            let pixels = &mut buffer[pixel_offset..pixel_offset + PIXELS_PER_WORD];
+
+                            for (&px, bit) in pixels.iter().zip(&mut pixel_block_buffer) {
+                                match px {
+                                    WHITE => *bit = O,
+                                    _ => *bit = I,
+                                }
+                            }
+
+                            let value = bus_as_number(&pixel_block_buffer);
+                            response_tx.send(value).unwrap();
+                        }
+
+                        IoCommand::GetKeyboard => {
+                            let mut key = 0;
+                            for k in window.get_keys() {
+                                match k {
+                                    _ => key = 128,
+                                }
+                            }
+                            response_tx.send(key).unwrap();
+                        }
+                    }
+                }
+                // Limit to max ~60 fps update rate
+                window.limit_update_rate(Some(std::time::Duration::from_micros(16600)));
+
+                window.update_with_buffer(&buffer, WIDTH, HEIGHT).unwrap();
+            }
+        });
+
+        IoDevice {
+            join_handle,
+            command: command_tx,
+            response: response_rx,
+        }
+    }
+
+    pub fn join(self) -> Result<(), String> {
+        self.join_handle.join().map_err(|e| format!("{:?}", e))
+    }
+}
+
+impl IoCallback for IoDevice {
+    fn write_screen(&self, addr: u16, value: u16) {
+        self.command
+            .send(IoCommand::SetScreen(addr, value))
+            .unwrap()
+    }
+
+    fn read_screen(&self, addr: u16) -> u16 {
+        self.command.send(IoCommand::GetScreen(addr)).unwrap();
+        self.response.recv().unwrap()
+    }
+
+    fn read_keyboard(&self) -> u16 {
+        self.command.send(IoCommand::GetKeyboard).unwrap();
+        self.response.recv().unwrap()
+    }
+
+    fn is_disconnected(&self) -> bool {
+        self.join_handle.is_finished()
+    }
+}
+
+impl Default for IoDevice {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
