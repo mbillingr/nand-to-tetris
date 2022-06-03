@@ -453,38 +453,53 @@ mod tests {
         );
     }
 
+    struct MockInstruction<'s> {
+        src: &'s str,
+    }
+
+    impl<'s> FromStrNocopy<'s> for MockInstruction<'s> {
+        fn from_str(s: &'s str) -> Result<Self, String> {
+            Ok(MockInstruction { src: s })
+        }
+    }
+
+    #[test]
+    fn parser_delegates_to_instruction_subparser() {
+        let mut parser = Parser::new("//comment\n    foo\t\n");
+        parser.advance();
+        let parsee = parser.instruction::<MockInstruction>().unwrap();
+        assert_eq!(parsee.src, "foo");
+    }
+
+    const ERROR_MESSAGE: &'static str = "CAN'T PARSE";
+
+    #[derive(Debug)]
+    struct ErrInstruction;
+
+    impl FromStr for ErrInstruction {
+        type Err = String;
+        fn from_str(_: &str) -> Result<Self, String> {
+            Err(ERROR_MESSAGE.to_string())
+        }
+    }
+
+    #[test]
+    fn parser_adds_line_numbers_to_subparser_errors() {
+        let mut parser = Parser::new("//comment\n\nfoo\t\n");
+        parser.advance();
+        let msg = parser.instruction::<ErrInstruction>().unwrap_err();
+        assert!(msg.contains(ERROR_MESSAGE));
+        assert!(msg.starts_with("line 3"));
+    }
+
     #[test]
     fn parse_constants() {
-        let mut parser = Parser::new("@xyz");
-        parser.advance();
-        assert_eq!(parser.instruction(), Ok(Instruction::A("xyz")));
+        assert_eq!(Instruction::parse("@xyz"), Ok(Instruction::A("xyz")));
     }
 
     #[test]
     fn parse_labels() {
-        let mut parser = Parser::new("(xyz)");
-        parser.advance();
-        assert_eq!(parser.instruction(), Ok(Instruction::L("xyz")));
-    }
-
-    #[test]
-    fn parse_instructions() {
-        let mut parser = Parser::new("A=0;JNE");
-        parser.advance();
-        assert_eq!(
-            parser.instruction(),
-            Ok(Instruction::C(Dest::A, Comp::Zero, Jump::NotZero))
-        );
-    }
-
-    #[test]
-    fn parse_errors_report_line_numbers() {
-        let mut parser = Parser::new("//comment\n=;");
-        parser.advance();
-        assert!(parser
-            .instruction::<u8>()
-            .unwrap_err()
-            .starts_with("line 2"));
+        assert_eq!(Instruction::parse("(xyz)"), Ok(Instruction::L("xyz")));
     }
 
     #[test]
