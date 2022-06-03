@@ -39,6 +39,10 @@ impl<'s> Parser<'s> {
         }
     }
 
+    pub fn instruction_str(&self) -> Option<&str> {
+        self.current_instruction
+    }
+
     pub fn instruction<T: FromStrNocopy<'s>>(&self) -> Result<T, String> {
         let instruction = self
             .current_instruction

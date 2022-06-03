@@ -33,6 +33,16 @@ pub enum Segment {
     Temp,
 }
 
+impl Segment {
+    pub fn is_special(&self) -> bool {
+        match self {
+            Segment::Argument | Segment::Local | Segment::This | Segment::That => false,
+            Segment::Constant => true,
+            _ => todo!(),
+        }
+    }
+}
+
 impl<'s> FromStrNocopy<'s> for Command {
     fn from_str(s: &'s str) -> Result<Self, String> {
         if let Ok(ac) = ArithmeticCmd::from_str(s) {
@@ -49,7 +59,7 @@ impl<'s> FromStrNocopy<'s> for Command {
                 Segment::from_str(segment)?,
                 FromStrNocopy::from_str(index)?,
             )),
-            _ => Err(format!("Invalid instruction {}", tokens.join(" ")))
+            _ => Err(format!("Invalid instruction {}", tokens.join(" "))),
         }
     }
 }

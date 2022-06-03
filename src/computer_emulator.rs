@@ -16,7 +16,7 @@ pub trait IoCallback {
 pub struct Computer {
     stop: Arc<AtomicBool>,
     rom: Vec<u16>,
-    ram: Vec<u16>,
+    pub ram: Vec<u16>,
     io: Arc<dyn IoCallback>,
 }
 
