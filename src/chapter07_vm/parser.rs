@@ -70,7 +70,14 @@ impl FromStr for ArithmeticCmd {
 impl<'s> FromStrNocopy<'s> for Segment {
     fn from_str(s: &'s str) -> Result<Self, String> {
         match s {
+            "argument" => Ok(Segment::Argument),
+            "local" => Ok(Segment::Local),
+            "static" => Ok(Segment::Static),
+            "constant" => Ok(Segment::Constant),
             "this" => Ok(Segment::This),
+            "that" => Ok(Segment::That),
+            "pointer" => Ok(Segment::Pointer),
+            "temp" => Ok(Segment::Temp),
             _ => Err(format!("Invalid segment {}", s)),
         }
     }
