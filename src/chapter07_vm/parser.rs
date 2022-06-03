@@ -5,6 +5,7 @@ use std::str::FromStr;
 pub enum Command {
     Arithmetic(ArithmeticCmd),
     Push(Segment, usize),
+    Pop(Segment, usize),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -44,7 +45,11 @@ impl<'s> FromStrNocopy<'s> for Command {
                 Segment::from_str(segment)?,
                 FromStrNocopy::from_str(index)?,
             )),
-            _ => todo!(),
+            ["pop", segment, index] => Ok(Command::Pop(
+                Segment::from_str(segment)?,
+                FromStrNocopy::from_str(index)?,
+            )),
+            _ => Err(format!("Invalid instruction {}", tokens.join(" ")))
         }
     }
 }
@@ -123,5 +128,12 @@ mod tests {
     #[test]
     fn parse_push_command() {
         assert_eq!(Command::from_str("push this 0"), Ok(Push(This, 0)));
+        assert_eq!(Command::from_str("push that 1"), Ok(Push(That, 1)));
+    }
+
+    #[test]
+    fn parse_pop_command() {
+        assert_eq!(Command::from_str("pop this 0"), Ok(Pop(This, 0)));
+        assert_eq!(Command::from_str("pop that 1"), Ok(Pop(That, 1)));
     }
 }
