@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::iter::Peekable;
+use std::str::FromStr;
 
 pub struct Parser<'s> {
     remaining_lines: Peekable<Box<dyn 's + Iterator<Item = (usize, &'s str)>>>,
@@ -38,11 +39,11 @@ impl<'s> Parser<'s> {
         }
     }
 
-    pub fn instruction(&self) -> Result<Instruction, String> {
+    pub fn instruction<T: FromStrNocopy<'s>>(&self) -> Result<T, String> {
         let instruction = self
             .current_instruction
-            .ok_or_else(|| "unexpected end of input".into())
-            .and_then(Instruction::parse);
+            .ok_or_else(|| "unexpected end of input".to_string())
+            .and_then(|s| T::from_str(s).map_err(|e| e.to_string()));
         self.add_line_to_error(instruction)
     }
 
@@ -69,11 +70,31 @@ fn unzip<A, B>(input: Option<(A, B)>) -> (Option<A>, Option<B>) {
     }
 }
 
+pub trait FromStrNocopy<'a>: 'a + Sized {
+    fn from_str(s: &'a str) -> Result<Self, String>;
+}
+
+impl<'a, T> FromStrNocopy<'a> for T
+where
+    T: 'a + FromStr,
+    T::Err: ToString,
+{
+    fn from_str(s: &str) -> Result<Self, String> {
+        T::from_str(s).map_err(|e| e.to_string())
+    }
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub enum Instruction<'s> {
     A(&'s str),
     L(&'s str),
     C(Dest, Comp, Jump),
+}
+
+impl<'s> FromStrNocopy<'s> for Instruction<'s> {
+    fn from_str(s: &'s str) -> Result<Self, String> {
+        Self::parse(s)
+    }
 }
 
 impl<'s> Instruction<'s> {
@@ -427,7 +448,7 @@ mod tests {
     #[test]
     fn instruction_method_requires_current_instruction() {
         assert_eq!(
-            Parser::new("").instruction(),
+            Parser::new("").instruction::<u8>(),
             Err("line 0: unexpected end of input".to_string())
         );
     }
@@ -460,7 +481,10 @@ mod tests {
     fn parse_errors_report_line_numbers() {
         let mut parser = Parser::new("//comment\n=;");
         parser.advance();
-        assert!(parser.instruction().unwrap_err().starts_with("line 2"));
+        assert!(parser
+            .instruction::<u8>()
+            .unwrap_err()
+            .starts_with("line 2"));
     }
 
     #[test]
