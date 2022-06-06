@@ -1,3 +1,4 @@
+use crate::chapter06_assembler::assembler::THIS;
 use crate::chapter06_assembler::parser::Parser;
 use crate::chapter07_vm::parser::{ArithmeticCmd, Command, Segment};
 
@@ -43,6 +44,7 @@ impl CodeGenerator {
             Segment::This => self.gen_push_offsetptr("@THIS", index),
             Segment::That => self.gen_push_offsetptr("@THAT", index),
             Segment::Temp => self.gen_push_addr(5 + index),
+            Segment::Pointer => return self.gen_push_addr(THIS + index),
             _ => todo!("{:?}", segment),
         }
     }
@@ -55,6 +57,7 @@ impl CodeGenerator {
             Segment::This => return self.gen_pop_offsetptr("@THIS", index),
             Segment::That => return self.gen_pop_offsetptr("@THAT", index),
             Segment::Temp => return self.gen_pop_addr(5 + index),
+            Segment::Pointer => return self.gen_pop_addr(THIS + index),
             _ => todo!("{:?}", segment),
         }
     }

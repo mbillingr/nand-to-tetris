@@ -52,6 +52,10 @@ mod tests {
             Ok(())
         }
 
+        fn get_ram(&self) -> &[u16] {
+            &self.emu.ram
+        }
+
         fn get_stack(&self) -> &[u16] {
             let sp = self.emu.get_ram(SP) as usize;
             &self.emu.ram[STACK_START_ADDR as usize..sp]
@@ -66,11 +70,13 @@ mod tests {
         }
 
         fn get_this(&self) -> &[u16] {
-            &self.emu.ram[THIS_START_ADDR as usize..]
+            let this = self.emu.get_ram(THIS) as usize;
+            &self.emu.ram[this..]
         }
 
         fn get_that(&self) -> &[u16] {
-            &self.emu.ram[THAT_START_ADDR as usize..]
+            let that = self.emu.get_ram(THAT) as usize;
+            &self.emu.ram[that..]
         }
 
         fn get_temp(&self) -> &[u16] {
@@ -255,5 +261,35 @@ mod tests {
         assert_eq!(vm.get_that()[..6], [0, 0, 42, 0, 0, 45]);
         assert_eq!(vm.get_temp(), [0, 0, 0, 0, 0, 0, 510, 0]);
         assert_eq!(vm.get_stack(), [472]);
+    }
+
+    #[test]
+    fn pointer() {
+        let mut vm = VmRunner::new();
+        vm.run(
+            "
+            push constant 3030
+            pop pointer 0
+            push constant 3040
+            pop pointer 1
+            push constant 32
+            pop this 2
+            push constant 46
+            pop that 6
+            push pointer 0
+            push pointer 1
+            add
+            push this 2
+            sub
+            push that 6
+            add
+            ",
+        )
+        .unwrap();
+        assert_eq!(vm.get_stack(), [6084]);
+        assert_eq!(vm.get_ram()[THIS as usize], 3030);
+        assert_eq!(vm.get_ram()[THAT as usize], 3040);
+        assert_eq!(vm.get_this()[..3], [0, 0, 32]);
+        assert_eq!(vm.get_that()[..7], [0, 0, 0, 0, 0, 0, 46]);
     }
 }
