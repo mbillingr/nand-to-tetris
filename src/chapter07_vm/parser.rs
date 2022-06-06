@@ -4,8 +4,8 @@ use std::str::FromStr;
 #[derive(Debug, Eq, PartialEq)]
 pub enum Command {
     Arithmetic(ArithmeticCmd),
-    Push(Segment, usize),
-    Pop(Segment, usize),
+    Push(Segment, u16),
+    Pop(Segment, u16),
 }
 
 #[derive(Debug, Eq, PartialEq)]

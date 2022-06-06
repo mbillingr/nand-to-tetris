@@ -60,7 +60,7 @@ impl Comp {
             Comp::DandA => 0b0000000,
             Comp::DandM => 0b1000000,
             Comp::DorA => 0b0010101,
-            Comp::DorM => 0b0010101,
+            Comp::DorM => 0b1010101,
         }
     }
 }
@@ -122,6 +122,6 @@ mod tests {
         assert_eq!(Comp::DandA.code(), 0b0000000);
         assert_eq!(Comp::DandM.code(), 0b1000000);
         assert_eq!(Comp::DorA.code(), 0b0010101);
-        assert_eq!(Comp::DorM.code(), 0b0010101);
+        assert_eq!(Comp::DorM.code(), 0b1010101);
     }
 }

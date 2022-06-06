@@ -6,6 +6,14 @@ const JUMP_OFFSET: u8 = 0;
 const DEST_OFFSET: u8 = 3;
 const COMP_OFFSET: u8 = 6;
 
+pub const SP: u16 = 0;
+pub const LCL: u16 = 1;
+pub const ARG: u16 = 2;
+pub const THIS: u16 = 3;
+pub const THAT: u16 = 4;
+pub const SCREEN: u16 = 0x4000;
+pub const KBD: u16 = 0x6000;
+
 pub fn assemble(src: &str) -> Result<Vec<u16>, String> {
     let mut symbol_table = build_symbol_table(src)?;
     let next_var_addr = predefine_variables(&mut symbol_table)?;
@@ -16,11 +24,11 @@ fn predefine_variables(symbol_table: &mut SymbolTable) -> Result<u16, String> {
     for r in 0..16 {
         symbol_table.add_entry(&format!("R{}", r), r)?;
     }
-    symbol_table.add_entry("SP", 0)?;
-    symbol_table.add_entry("LCL", 1)?;
-    symbol_table.add_entry("ARG", 2)?;
-    symbol_table.add_entry("THIS", 3)?;
-    symbol_table.add_entry("THAT", 4)?;
+    symbol_table.add_entry("SP", SP)?;
+    symbol_table.add_entry("LCL", LCL)?;
+    symbol_table.add_entry("ARG", ARG)?;
+    symbol_table.add_entry("THIS", THIS)?;
+    symbol_table.add_entry("THAT", THAT)?;
     symbol_table.add_entry("SCREEN", 0x4000)?;
     symbol_table.add_entry("KBD", 0x6000)?;
     Ok(16)
@@ -95,6 +103,8 @@ mod tests {
     #[test]
     fn assemble_c_instruction() {
         assert_eq!(assemble("D&A").unwrap(), vec![0b1110000000000000]);
+        assert_eq!(assemble("D&M").unwrap(), vec![0b1111000000000000]);
+        assert_eq!(assemble("D|M").unwrap(), vec![0b1111010101000000]);
         assert_eq!(assemble("ADM=1;JMP").unwrap(), vec![0b1110111111111111]);
     }
 
