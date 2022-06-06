@@ -32,8 +32,7 @@ mod tests {
         }
 
         fn run(&mut self, vm_code: &str) -> Result<(), String> {
-            let asm_code = CodeGenerator::new().translate(&vm_code)?;
-            println!("{}", asm_code);
+            let asm_code = CodeGenerator::new("VM").translate(&vm_code)?;
             let binary_code = assemble(&asm_code)?;
 
             let mut emu = Computer::new(binary_code);
@@ -291,5 +290,28 @@ mod tests {
         assert_eq!(vm.get_ram()[THAT as usize], 3040);
         assert_eq!(vm.get_this()[..3], [0, 0, 32]);
         assert_eq!(vm.get_that()[..7], [0, 0, 0, 0, 0, 0, 46]);
+    }
+
+    #[test]
+    fn statics() {
+        let mut vm = VmRunner::new();
+        vm.run(
+            "
+            push constant 111
+            push constant 333
+            push constant 888
+            pop static 8
+            pop static 3
+            pop static 1
+            push static 3
+            push static 1
+            sub
+            push static 8
+            add
+            ",
+        )
+        .unwrap();
+        assert_eq!(vm.get_stack(), [1110]);
+        assert_eq!(vm.get_ram()[16..20], [888, 333, 111, 0]);
     }
 }

@@ -3,12 +3,16 @@ use crate::chapter06_assembler::parser::Parser;
 use crate::chapter07_vm::parser::{ArithmeticCmd, Command, Segment};
 
 pub struct CodeGenerator {
+    module_name: String,
     label_counter: usize,
 }
 
 impl CodeGenerator {
-    pub fn new() -> Self {
-        CodeGenerator { label_counter: 0 }
+    pub fn new(module: impl Into<String>) -> Self {
+        CodeGenerator {
+            module_name: module.into(),
+            label_counter: 0,
+        }
     }
 
     pub fn translate(&mut self, src: &str) -> Result<String, String> {
@@ -39,26 +43,26 @@ impl CodeGenerator {
     fn gen_push_cmd(&self, segment: Segment, index: u16) -> String {
         match segment {
             Segment::Constant => self.gen_push_constant(index),
-            Segment::Argument => self.gen_push_offsetptr("@ARG", index),
-            Segment::Local => self.gen_push_offsetptr("@LCL", index),
-            Segment::This => self.gen_push_offsetptr("@THIS", index),
-            Segment::That => self.gen_push_offsetptr("@THAT", index),
+            Segment::Argument => self.gen_push_offsetptr("ARG", index),
+            Segment::Local => self.gen_push_offsetptr("LCL", index),
+            Segment::This => self.gen_push_offsetptr("THIS", index),
+            Segment::That => self.gen_push_offsetptr("THAT", index),
             Segment::Temp => self.gen_push_addr(5 + index),
             Segment::Pointer => return self.gen_push_addr(THIS + index),
-            _ => todo!("{:?}", segment),
+            Segment::Static => return self.gen_push_static(index),
         }
     }
 
     fn gen_pop_cmd(&self, segment: Segment, index: u16) -> String {
         match segment {
             Segment::Constant => return String::new(), // just ignore popping into constants
-            Segment::Argument => return self.gen_pop_offsetptr("@ARG", index),
-            Segment::Local => return self.gen_pop_offsetptr("@LCL", index),
-            Segment::This => return self.gen_pop_offsetptr("@THIS", index),
-            Segment::That => return self.gen_pop_offsetptr("@THAT", index),
+            Segment::Argument => return self.gen_pop_offsetptr("ARG", index),
+            Segment::Local => return self.gen_pop_offsetptr("LCL", index),
+            Segment::This => return self.gen_pop_offsetptr("THIS", index),
+            Segment::That => return self.gen_pop_offsetptr("THAT", index),
             Segment::Temp => return self.gen_pop_addr(5 + index),
             Segment::Pointer => return self.gen_pop_addr(THIS + index),
-            _ => todo!("{:?}", segment),
+            Segment::Static => return self.gen_pop_static(index),
         }
     }
 
@@ -123,11 +127,11 @@ impl CodeGenerator {
 
     fn gen_push_offsetptr(&self, ptr: &str, value: u16) -> String {
         match value {
-            0 => format!("{}\nA=M\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", ptr),
-            1 => format!("{}\nA=M+1\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", ptr),
-            2 => format!("{}\nA=M+1\nA=A+1\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", ptr),
+            0 => format!("@{}\nA=M\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", ptr),
+            1 => format!("@{}\nA=M+1\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", ptr),
+            2 => format!("@{}\nA=M+1\nA=A+1\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", ptr),
             _ => format!(
-                "@{}\nD=A\n{}\nA=D+M\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n",
+                "@{}\nD=A\n@{}\nA=D+M\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n",
                 value, ptr
             ),
         }
@@ -135,27 +139,34 @@ impl CodeGenerator {
 
     fn gen_pop_offsetptr(&self, ptr: &str, value: u16) -> String {
         match value {
-            0 => format!("@SP\nM=M-1\nA=M\nD=M\n{}\nA=M\nM=D", ptr),
-            1 => format!("@SP\nM=M-1\nA=M\nD=M\n{}\nA=M+1\nM=D", ptr),
-            2 => format!("@SP\nM=M-1\nA=M\nD=M\n{}\nA=M+1\nA=A+1\nM=D", ptr),
-            3 => format!("@SP\nM=M-1\nA=M\nD=M\n{}\nA=M+1\nA=A+1\nA=A+1\nM=D", ptr),
+            0 => format!("@SP\nM=M-1\nA=M\nD=M\n@{}\nA=M\nM=D", ptr),
+            1 => format!("@SP\nM=M-1\nA=M\nD=M\n@{}\nA=M+1\nM=D", ptr),
+            2 => format!("@SP\nM=M-1\nA=M\nD=M\n@{}\nA=M+1\nA=A+1\nM=D", ptr),
+            3 => format!("@SP\nM=M-1\nA=M\nD=M\n@{}\nA=M+1\nA=A+1\nA=A+1\nM=D", ptr),
             _ => format!(
-                "@{}\nD=A\n{}\nD=D+M\n@R15\nM=D\n@SP\nM=M-1\nA=M\nD=M\n@R15\nA=M\nM=D",
+                "@{}\nD=A\n@{}\nD=D+M\n@R15\nM=D\n@SP\nM=M-1\nA=M\nD=M\n@R15\nA=M\nM=D",
                 value, ptr
             ),
         }
     }
 
     fn gen_push_addr(&self, value: u16) -> String {
-        match value {
-            _ => format!("@{}\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", value),
-        }
+        format!("@{}\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", value)
     }
 
     fn gen_pop_addr(&self, value: u16) -> String {
-        match value {
-            _ => format!("@SP\nM=M-1\nA=M\nD=M\n@{}\nM=D", value),
-        }
+        format!("@SP\nM=M-1\nA=M\nD=M\n@{}\nM=D", value)
+    }
+
+    fn gen_push_static(&self, index: u16) -> String {
+        format!(
+            "@{}.{}\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n",
+            self.module_name, index
+        )
+    }
+
+    fn gen_pop_static(&self, index: u16) -> String {
+        format!("@SP\nM=M-1\nA=M\nD=M\n@{}.{}\nM=D", self.module_name, index)
     }
 
     /// push D register on stack
@@ -180,20 +191,20 @@ mod tests {
     #[test]
     fn push() {
         assert_eq!(
-            CodeGenerator::new().gen_push("D"),
+            CodeGenerator::new("").gen_push("D"),
             "@SP\nA=M\nM=D\n@SP\nM=M+1\n"
         )
     }
 
     #[test]
     fn unary_cmd() {
-        let cg = CodeGenerator::new();
+        let cg = CodeGenerator::new("");
         assert_eq!(cg.gen_unary_cmd("cmd"), "@SP\nA=M-1\ncmd\n");
     }
 
     #[test]
     fn binary_cmd() {
-        let cg = CodeGenerator::new();
+        let cg = CodeGenerator::new("");
         assert_eq!(
             cg.gen_binary_cmd("cmd"),
             "@SP\nM=M-1\nA=M\nD=M\n@SP\nA=M-1\ncmd\n"
@@ -202,7 +213,7 @@ mod tests {
 
     #[test]
     fn comparison_cmd() {
-        let mut cg = CodeGenerator::new();
+        let mut cg = CodeGenerator::new("");
         assert_eq!(
             cg.gen_comparison_cmd("***"),
             format!(
@@ -222,19 +233,19 @@ mod tests {
     #[test]
     fn push_constant() {
         assert_eq!(
-            CodeGenerator::new().gen_push_constant(2),
+            CodeGenerator::new("").gen_push_constant(2),
             "@2\nD=A\n@SP\nA=M\nM=D\n@SP\nM=M+1\n"
         );
         assert_eq!(
-            CodeGenerator::new().gen_push_constant(0),
+            CodeGenerator::new("").gen_push_constant(0),
             "@SP\nA=M\nM=0\n@SP\nM=M+1\n"
         );
         assert_eq!(
-            CodeGenerator::new().gen_push_constant(1),
+            CodeGenerator::new("").gen_push_constant(1),
             "@SP\nA=M\nM=1\n@SP\nM=M+1\n"
         );
         assert_eq!(
-            CodeGenerator::new().gen_push_constant((-1_i16) as u16),
+            CodeGenerator::new("").gen_push_constant((-1_i16) as u16),
             "@SP\nA=M\nM=-1\n@SP\nM=M+1\n"
         );
     }
@@ -242,19 +253,19 @@ mod tests {
     #[test]
     fn push_ptr() {
         assert_eq!(
-            CodeGenerator::new().gen_push_offsetptr("@ThePtr", 3),
+            CodeGenerator::new("").gen_push_offsetptr("ThePtr", 3),
             "@3\nD=A\n@ThePtr\nA=D+M\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n"
         );
         assert_eq!(
-            CodeGenerator::new().gen_push_offsetptr("@ThePtr", 0),
+            CodeGenerator::new("").gen_push_offsetptr("ThePtr", 0),
             "@ThePtr\nA=M\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n"
         );
         assert_eq!(
-            CodeGenerator::new().gen_push_offsetptr("@ThePtr", 1),
+            CodeGenerator::new("").gen_push_offsetptr("ThePtr", 1),
             "@ThePtr\nA=M+1\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n"
         );
         assert_eq!(
-            CodeGenerator::new().gen_push_offsetptr("@ThePtr", 2),
+            CodeGenerator::new("").gen_push_offsetptr("ThePtr", 2),
             "@ThePtr\nA=M+1\nA=A+1\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n"
         );
     }
@@ -262,28 +273,28 @@ mod tests {
     #[test]
     fn pop_ptr() {
         assert_eq!(
-            CodeGenerator::new().gen_pop_offsetptr("@ThePtr", 99),
+            CodeGenerator::new("").gen_pop_offsetptr("ThePtr", 99),
             "@99\nD=A\n@ThePtr\nD=D+M\n@R15\nM=D\n\
             @SP\nM=M-1\nA=M\nD=M\n\
             @R15\nA=M\nM=D"
         );
         assert_eq!(
-            CodeGenerator::new().gen_pop_offsetptr("@ThePtr", 0),
+            CodeGenerator::new("").gen_pop_offsetptr("ThePtr", 0),
             "@SP\nM=M-1\nA=M\nD=M\n\
             @ThePtr\nA=M\nM=D"
         );
         assert_eq!(
-            CodeGenerator::new().gen_pop_offsetptr("@ThePtr", 1),
+            CodeGenerator::new("").gen_pop_offsetptr("ThePtr", 1),
             "@SP\nM=M-1\nA=M\nD=M\n\
             @ThePtr\nA=M+1\nM=D"
         );
         assert_eq!(
-            CodeGenerator::new().gen_pop_offsetptr("@ThePtr", 2),
+            CodeGenerator::new("").gen_pop_offsetptr("ThePtr", 2),
             "@SP\nM=M-1\nA=M\nD=M\n\
             @ThePtr\nA=M+1\nA=A+1\nM=D"
         );
         assert_eq!(
-            CodeGenerator::new().gen_pop_offsetptr("@ThePtr", 3),
+            CodeGenerator::new("").gen_pop_offsetptr("ThePtr", 3),
             "@SP\nM=M-1\nA=M\nD=M\n\
             @ThePtr\nA=M+1\nA=A+1\nA=A+1\nM=D"
         );
@@ -292,7 +303,7 @@ mod tests {
     #[test]
     fn push_addr() {
         assert_eq!(
-            CodeGenerator::new().gen_push_addr(99),
+            CodeGenerator::new("").gen_push_addr(99),
             "@99\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n"
         );
     }
@@ -300,9 +311,18 @@ mod tests {
     #[test]
     fn pop_addr() {
         assert_eq!(
-            CodeGenerator::new().gen_pop_addr(99),
+            CodeGenerator::new("").gen_pop_addr(99),
             "@SP\nM=M-1\nA=M\nD=M\n\
             @99\nM=D"
+        );
+    }
+
+    #[test]
+    fn pop_static() {
+        assert_eq!(
+            CodeGenerator::new("foo").gen_pop_static(99),
+            "@SP\nM=M-1\nA=M\nD=M\n\
+            @foo.99\nM=D"
         );
     }
 }
