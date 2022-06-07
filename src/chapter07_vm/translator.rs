@@ -92,7 +92,7 @@ impl CodeGenerator {
     /// Command with two arguments. Expects inputs in M and D registers, output in M, and preserve A.
     fn gen_binary_cmd(&self, cmd: &str) -> String {
         let mut asm = String::new();
-        asm += "@SP\nM=M-1\nA=M\nD=M\n";
+        asm += POPD;
         asm += &self.gen_unary_cmd(cmd);
         asm
     }
@@ -121,55 +121,48 @@ impl CodeGenerator {
             0 => self.gen_push("0"),
             1 => self.gen_push("1"),
             65535 => self.gen_push("-1"),
-            _ => format!("@{}\nD=A\n{}", value, self.gen_push("D")),
+            _ => format!("@{}\nD=A\n{PUSHD}", value),
         }
     }
 
     fn gen_push_offsetptr(&self, ptr: &str, value: u16) -> String {
         match value {
-            0 => format!("@{}\nA=M\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", ptr),
-            1 => format!("@{}\nA=M+1\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", ptr),
-            2 => format!("@{}\nA=M+1\nA=A+1\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", ptr),
-            _ => format!(
-                "@{}\nD=A\n@{}\nA=D+M\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n",
-                value, ptr
-            ),
+            0 => format!("@{}\nA=M\nD=M\n{PUSHD}", ptr),
+            1 => format!("@{}\nA=M+1\nD=M\n{PUSHD}", ptr),
+            2 => format!("@{}\nA=M+1\nA=A+1\nD=M\n{PUSHD}", ptr),
+            _ => format!("@{}\nD=A\n@{}\nA=D+M\nD=M\n{PUSHD}", value, ptr),
         }
     }
 
     fn gen_pop_offsetptr(&self, ptr: &str, value: u16) -> String {
         match value {
-            0 => format!("@SP\nM=M-1\nA=M\nD=M\n@{}\nA=M\nM=D", ptr),
-            1 => format!("@SP\nM=M-1\nA=M\nD=M\n@{}\nA=M+1\nM=D", ptr),
-            2 => format!("@SP\nM=M-1\nA=M\nD=M\n@{}\nA=M+1\nA=A+1\nM=D", ptr),
-            3 => format!("@SP\nM=M-1\nA=M\nD=M\n@{}\nA=M+1\nA=A+1\nA=A+1\nM=D", ptr),
+            0 => format!("{POPD}@{}\nA=M\nM=D", ptr),
+            1 => format!("{POPD}@{}\nA=M+1\nM=D", ptr),
+            2 => format!("{POPD}@{}\nA=M+1\nA=A+1\nM=D", ptr),
+            3 => format!("{POPD}@{}\nA=M+1\nA=A+1\nA=A+1\nM=D", ptr),
             _ => format!(
-                "@{}\nD=A\n@{}\nD=D+M\n@R15\nM=D\n@SP\nM=M-1\nA=M\nD=M\n@R15\nA=M\nM=D",
+                "@{}\nD=A\n@{}\nD=D+M\n@R15\nM=D\n{POPD}@R15\nA=M\nM=D",
                 value, ptr
             ),
         }
     }
 
     fn gen_push_addr(&self, value: u16) -> String {
-        format!("@{}\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n", value)
+        format!("@{}\nD=M\n{PUSHD}", value)
     }
 
     fn gen_pop_addr(&self, value: u16) -> String {
-        format!("@SP\nM=M-1\nA=M\nD=M\n@{}\nM=D", value)
+        format!("{POPD}@{}\nM=D", value)
     }
 
     fn gen_push_static(&self, index: u16) -> String {
-        format!(
-            "@{}.{}\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n",
-            self.module_name, index
-        )
+        format!("@{}.{}\nD=M\n{PUSHD}", self.module_name, index)
     }
 
     fn gen_pop_static(&self, index: u16) -> String {
-        format!("@SP\nM=M-1\nA=M\nD=M\n@{}.{}\nM=D", self.module_name, index)
+        format!("{POPD}@{}.{}\nM=D", self.module_name, index)
     }
 
-    /// push D register on stack
     fn gen_push(&self, comp: &str) -> String {
         format!(
             "\
@@ -183,6 +176,9 @@ M=M+1
         )
     }
 }
+
+const POPD: &'static str = "@SP\nM=M-1\nA=M\nD=M\n";
+const PUSHD: &'static str = "@SP\nA=M\nM=D\n@SP\nM=M+1\n";
 
 #[cfg(test)]
 mod tests {
