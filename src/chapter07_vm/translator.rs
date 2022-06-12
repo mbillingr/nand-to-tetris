@@ -15,23 +15,70 @@ impl CodeGenerator {
         }
     }
 
-    pub fn translate(&mut self, src: &str) -> Result<String, String> {
+    pub fn parse<'s>(&self, src: &'s str) -> impl Iterator<Item = Result<Command, String>> + 's {
         let mut parser = Parser::new(src);
 
-        let mut asm_code = String::new();
-        while parser.has_more_lines() {
-            parser.advance();
+        (0..)
+            .map(move |_| {
+                if parser.has_more_lines() {
+                    parser.advance();
+                    Some(parser.instruction())
+                } else {
+                    None
+                }
+            })
+            .take_while(Option::is_some)
+            .map(Option::unwrap)
+    }
 
-            if let Some(cmd) = parser.instruction_str() {
-                asm_code += "// ";
-                asm_code += cmd;
-                asm_code += "\n";
+    pub fn optimize(
+        &self,
+        cmds: impl Iterator<Item = Result<Command, String>>,
+    ) -> Box<dyn Iterator<Item = Result<Command, String>>> {
+        use Command::*;
+        let mut command_buffer: Vec<Command> = vec![];
+        for cmd in cmds {
+            match cmd {
+                Err(msg) => return Box::new([Err(msg)].into_iter()),
+                Ok(cmd) => command_buffer.push(cmd),
             }
 
-            match parser.instruction()? {
+            loop {
+                let b = command_buffer.pop();
+                let a = command_buffer.pop();
+
+                match (a, b) {
+                    (None, None) => break,
+                    (None, Some(b)) => {
+                        command_buffer.push(b);
+                        break;
+                    }
+                    (Some(Push(src, i)), Some(Pop(dst, j))) => {
+                        command_buffer.push(Command::Move(src, i, dst, j))
+                    }
+                    (Some(a), Some(b)) => {
+                        command_buffer.push(a);
+                        command_buffer.push(b);
+                        break;
+                    }
+                    _ => unreachable!(),
+                }
+            }
+        }
+        Box::new(command_buffer.into_iter().map(|cmd| Ok(cmd)))
+    }
+
+    pub fn translate(&mut self, src: &str) -> Result<String, String> {
+        let mut asm_code = String::new();
+        for instruction in self.optimize(self.parse(src)) {
+            let instruction = instruction?;
+            asm_code += &format!("// {}\n", instruction);
+
+            match instruction {
                 Command::Arithmetic(ac) => asm_code += &self.gen_arithmetic_cmd(ac),
                 Command::Push(segment, index) => asm_code += &self.gen_push_cmd(segment, index),
                 Command::Pop(segment, index) => asm_code += &self.gen_pop_cmd(segment, index),
+                Command::Move(src, i, dst, j) => asm_code += &self.gen_move_cmd(src, i, dst, j),
             }
 
             asm_code += "\n";
@@ -43,26 +90,20 @@ impl CodeGenerator {
     fn gen_push_cmd(&self, segment: Segment, index: u16) -> String {
         match segment {
             Segment::Constant => self.gen_push_constant(index),
-            Segment::Argument => self.gen_push_offsetptr("ARG", index),
-            Segment::Local => self.gen_push_offsetptr("LCL", index),
-            Segment::This => self.gen_push_offsetptr("THIS", index),
-            Segment::That => self.gen_push_offsetptr("THAT", index),
             Segment::Temp => self.gen_push_addr(5 + index),
             Segment::Pointer => return self.gen_push_addr(THIS + index),
             Segment::Static => return self.gen_push_static(index),
+            s => self.gen_push_offsetptr(s.register_name().unwrap(), index),
         }
     }
 
     fn gen_pop_cmd(&self, segment: Segment, index: u16) -> String {
         match segment {
             Segment::Constant => return String::new(), // just ignore popping into constants
-            Segment::Argument => return self.gen_pop_offsetptr("ARG", index),
-            Segment::Local => return self.gen_pop_offsetptr("LCL", index),
-            Segment::This => return self.gen_pop_offsetptr("THIS", index),
-            Segment::That => return self.gen_pop_offsetptr("THAT", index),
             Segment::Temp => return self.gen_pop_addr(5 + index),
             Segment::Pointer => return self.gen_pop_addr(THIS + index),
             Segment::Static => return self.gen_pop_static(index),
+            s => self.gen_pop_offsetptr(s.register_name().unwrap(), index),
         }
     }
 
@@ -78,6 +119,60 @@ impl CodeGenerator {
             ArithmeticCmd::Or => self.gen_binary_cmd("M=D|M"),
             ArithmeticCmd::Not => self.gen_unary_cmd("M=!M"),
         }
+    }
+
+    fn gen_move_cmd(&self, src: Segment, i: u16, dst: Segment, j: u16) -> String {
+        let mut asm = String::new();
+        match src {
+            Segment::Constant => return self.gen_store_constant(i, dst, j),
+            Segment::Temp => asm += &format!("@{}\nD=M\n", 5 + i),
+            Segment::Pointer => asm += &format!("@{}\nD=M\n", THIS + i),
+            Segment::Static => asm += &format!("@{}.{}\nD=M\n", self.module_name, i),
+            s => {
+                asm += &self.gen_compute_offset(s.register_name().unwrap(), i);
+                asm += "D=M\n"
+            }
+        }
+
+        match dst {
+            Segment::Constant => return String::new(), // just ignore writing into constants
+            Segment::Temp => asm += &format!("@{}\nM=D", 5 + j),
+            Segment::Pointer => asm += &format!("@{}\nM=D", THIS + j),
+            Segment::Static => asm += &format!("@{}.{}\nM=D", self.module_name, j),
+            s => asm += &self.gen_write_to_offsetptr(s.register_name().unwrap(), j),
+        }
+
+        asm
+    }
+
+    fn gen_store_constant(&self, value: u16, dst: Segment, j: u16) -> String {
+        let mut asm = String::new();
+
+        match dst {
+            Segment::Constant => return String::new(), // just ignore writing into constants
+            Segment::Temp => asm += &format!("@{}\nD=A\n@{}\nM=D", value, 5 + j),
+            Segment::Pointer => asm += &format!("@{}\nD=A\n@{}\nM=D", value, THIS + j),
+            Segment::Static => asm += &format!("@{}\nD=A\n@{}.{}\nM=D", value, self.module_name, j),
+            s => match j {
+                0 | 1 | 2 | 3 => {
+                    asm += &format!(
+                        "@{}\nD=A\n{}M=D",
+                        value,
+                        self.gen_compute_offset(s.register_name().unwrap(), j)
+                    )
+                }
+                _ => {
+                    asm += &format!(
+                        "@{}\nD=A\n@{}\nD=D+M\n@R14\nM=D\n@{}\nD=A\n@R14\nA=M\nM=D\n",
+                        j,
+                        s.register_name().unwrap(),
+                        value
+                    )
+                }
+            },
+        }
+
+        asm
     }
 
     /// Command with one argument. Expects input and output in M register and preserve A.
@@ -125,25 +220,37 @@ impl CodeGenerator {
         }
     }
 
-    fn gen_push_offsetptr(&self, ptr: &str, value: u16) -> String {
-        match value {
-            0 => format!("@{}\nA=M\nD=M\n{PUSHD}", ptr),
-            1 => format!("@{}\nA=M+1\nD=M\n{PUSHD}", ptr),
-            2 => format!("@{}\nA=M+1\nA=A+1\nD=M\n{PUSHD}", ptr),
-            _ => format!("@{}\nD=A\n@{}\nA=D+M\nD=M\n{PUSHD}", value, ptr),
+    fn gen_push_offsetptr(&self, ptr: &str, offset: u16) -> String {
+        format!("{}D=M\n{PUSHD}", self.gen_compute_offset(ptr, offset))
+    }
+
+    fn gen_pop_offsetptr(&self, ptr: &str, offset: u16) -> String {
+        match offset {
+            0 | 1 | 2 | 3 => format!("{POPD}{}M=D", self.gen_compute_offset(ptr, offset)),
+            _ => format!(
+                "@{}\nD=A\n@{}\nD=D+M\n@R15\nM=D\n{POPD}@R15\nA=M\nM=D",
+                offset, ptr
+            ),
         }
     }
 
-    fn gen_pop_offsetptr(&self, ptr: &str, value: u16) -> String {
-        match value {
-            0 => format!("{POPD}@{}\nA=M\nM=D", ptr),
-            1 => format!("{POPD}@{}\nA=M+1\nM=D", ptr),
-            2 => format!("{POPD}@{}\nA=M+1\nA=A+1\nM=D", ptr),
-            3 => format!("{POPD}@{}\nA=M+1\nA=A+1\nA=A+1\nM=D", ptr),
+    fn gen_write_to_offsetptr(&self, ptr: &str, offset: u16) -> String {
+        match offset {
+            0 | 1 | 2 | 3 => format!("{}M=D", self.gen_compute_offset(ptr, offset)),
             _ => format!(
-                "@{}\nD=A\n@{}\nD=D+M\n@R15\nM=D\n{POPD}@R15\nA=M\nM=D",
-                value, ptr
+                "@R15\nM=D\n@{}\nD=A\n@{}\nD=D+M\n@R14\nM=D\n@R15\nD=M\n@R14\nA=M\nM=D\n",
+                offset, ptr
             ),
+        }
+    }
+
+    fn gen_compute_offset(&self, ptr: &str, offset: u16) -> String {
+        match offset {
+            0 => format!("@{}\nA=M\n", ptr),
+            1 => format!("@{}\nA=M+1\n", ptr),
+            2 => format!("@{}\nA=M+1\nA=A+1\n", ptr),
+            3 => format!("@{}\nA=M+1\nA=A+1\nA=A+1\n", ptr),
+            _ => format!("@{}\nD=A\n@{}\nA=D+M\n", offset, ptr),
         }
     }
 
@@ -249,8 +356,8 @@ mod tests {
     #[test]
     fn push_ptr() {
         assert_eq!(
-            CodeGenerator::new("").gen_push_offsetptr("ThePtr", 3),
-            "@3\nD=A\n@ThePtr\nA=D+M\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n"
+            CodeGenerator::new("").gen_push_offsetptr("ThePtr", 4),
+            "@4\nD=A\n@ThePtr\nA=D+M\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n"
         );
         assert_eq!(
             CodeGenerator::new("").gen_push_offsetptr("ThePtr", 0),
@@ -263,6 +370,10 @@ mod tests {
         assert_eq!(
             CodeGenerator::new("").gen_push_offsetptr("ThePtr", 2),
             "@ThePtr\nA=M+1\nA=A+1\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n"
+        );
+        assert_eq!(
+            CodeGenerator::new("").gen_push_offsetptr("ThePtr", 3),
+            "@ThePtr\nA=M+1\nA=A+1\nA=A+1\nD=M\n@SP\nA=M\nM=D\n@SP\nM=M+1\n"
         );
     }
 

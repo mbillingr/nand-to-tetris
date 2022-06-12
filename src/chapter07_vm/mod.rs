@@ -33,6 +33,7 @@ mod tests {
 
         fn run(&mut self, vm_code: &str) -> Result<(), String> {
             let asm_code = CodeGenerator::new("VM").translate(&vm_code)?;
+            println!("{}", asm_code);
             let binary_code = assemble(&asm_code)?;
 
             let mut emu = Computer::new(binary_code);
@@ -313,5 +314,24 @@ mod tests {
         .unwrap();
         assert_eq!(vm.get_stack(), [1110]);
         assert_eq!(vm.get_ram()[16..20], [888, 333, 111, 0]);
+    }
+
+    #[test]
+    fn mem_move() {
+        let mut vm = VmRunner::new();
+        vm.run(
+            "
+            push constant 42
+            pop argument 7
+            push argument 7
+            pop local 9
+
+            push constant 123
+            pop static 0
+            ",
+        )
+        .unwrap();
+        assert_eq!(vm.get_locals()[9], 42);
+        assert_eq!(vm.get_ram()[16], 123);
     }
 }

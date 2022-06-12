@@ -1,4 +1,5 @@
 use crate::chapter06_assembler::parser::FromStrNocopy;
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -6,6 +7,8 @@ pub enum Command {
     Arithmetic(ArithmeticCmd),
     Push(Segment, u16),
     Pop(Segment, u16),
+
+    Move(Segment, u16, Segment, u16),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -33,12 +36,58 @@ pub enum Segment {
     Temp,
 }
 
-impl Segment {
-    pub fn is_special(&self) -> bool {
+impl Display for Command {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Segment::Argument | Segment::Local | Segment::This | Segment::That => false,
-            Segment::Constant => true,
-            _ => todo!(),
+            Command::Arithmetic(ac) => write!(f, "{}", ac),
+            Command::Push(seg, idx) => write!(f, "push {} {}", seg, idx),
+            Command::Pop(seg, idx) => write!(f, "pop {} {}", seg, idx),
+
+            Command::Move(src, i, dst, j) => write!(f, "push {} {}; pop {} {}", src, i, dst, j),
+        }
+    }
+}
+
+impl Display for ArithmeticCmd {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        use ArithmeticCmd::*;
+        match self {
+            Add => write!(f, "add"),
+            Sub => write!(f, "sub"),
+            Neg => write!(f, "neg"),
+            Eq => write!(f, "eq"),
+            Gt => write!(f, "gt"),
+            Lt => write!(f, "lt"),
+            And => write!(f, "and"),
+            Or => write!(f, "or"),
+            Not => write!(f, "not"),
+        }
+    }
+}
+
+impl Display for Segment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Segment::Argument => write!(f, "argument"),
+            Segment::Local => write!(f, "local"),
+            Segment::Static => write!(f, "static"),
+            Segment::Constant => write!(f, "constant"),
+            Segment::This => write!(f, "this"),
+            Segment::That => write!(f, "that"),
+            Segment::Pointer => write!(f, "pointer"),
+            Segment::Temp => write!(f, "temp"),
+        }
+    }
+}
+
+impl Segment {
+    pub fn register_name(&self) -> Option<&'static str> {
+        match self {
+            Segment::Argument => Some("ARG"),
+            Segment::Local => Some("LCL"),
+            Segment::This => Some("THIS"),
+            Segment::That => Some("THAT"),
+            _ => None,
         }
     }
 }
