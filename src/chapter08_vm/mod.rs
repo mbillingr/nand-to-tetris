@@ -115,4 +115,55 @@ mod tests {
         .unwrap();
         assert_eq!(vm.get_stack(), [10]);
     }
+
+    #[test]
+    fn fibonacci() {
+        let mut vm = VmRunner::new();
+        vm.set_arg(0, 8);
+        vm.set_arg(1, 3000);
+        vm.run(
+            "
+            push argument 1
+            pop pointer 1
+
+            push constant 0
+            pop that 0
+            push constant 1
+            pop that 1
+
+            push argument 0
+            push constant 2
+            sub
+            pop argument 0
+
+            label MAIN_LOOP
+
+            push argument 0
+            if-goto COMPUTE_ELEM
+            goto END_PROGRAM
+
+            label COMPUTE_ELEM
+            push that 0
+            push that 1
+            add
+            pop that 2
+
+            push pointer 1
+            push constant 1
+            add
+            pop pointer 1
+
+            push argument 0
+            push constant 1
+            sub
+            pop argument 0
+
+            goto MAIN_LOOP
+
+            label END_PROGRAM
+            ",
+        )
+        .unwrap();
+        assert_eq!(vm.get_ram()[3000..3008], [0, 1, 1, 2, 3, 5, 8, 13]);
+    }
 }
