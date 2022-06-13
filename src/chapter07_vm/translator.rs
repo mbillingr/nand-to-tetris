@@ -15,7 +15,7 @@ impl CodeGenerator {
         }
     }
 
-    pub fn parse<'s>(&self, src: &'s str) -> impl Iterator<Item = Result<Command, String>> + 's {
+    pub fn parse<'s>(src: &'s str) -> impl Iterator<Item = Result<Command, String>> + 's {
         let mut parser = Parser::new(src);
 
         (0..)
@@ -32,7 +32,6 @@ impl CodeGenerator {
     }
 
     pub fn optimize(
-        &self,
         cmds: impl Iterator<Item = Result<Command, String>>,
     ) -> Box<dyn Iterator<Item = Result<Command, String>>> {
         use Command::*;
@@ -68,9 +67,12 @@ impl CodeGenerator {
         Box::new(command_buffer.into_iter().map(|cmd| Ok(cmd)))
     }
 
-    pub fn translate(&mut self, src: &str) -> Result<String, String> {
+    pub fn translate(
+        &mut self,
+        instructions: impl Iterator<Item = Result<Command, String>>,
+    ) -> Result<String, String> {
         let mut asm_code = String::new();
-        for instruction in self.optimize(self.parse(src)) {
+        for instruction in instructions {
             let instruction = instruction?;
             asm_code += &format!("// {}\n", instruction);
 

@@ -6,6 +6,7 @@ pub mod chapter03_memory;
 pub mod chapter05_computer_architecture;
 pub mod chapter06_assembler;
 pub mod chapter07_vm;
+pub mod chapter08_vm;
 pub mod computer_emulator;
 
 #[cfg(test)]

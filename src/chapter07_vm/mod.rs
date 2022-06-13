@@ -32,8 +32,14 @@ mod tests {
         }
 
         fn run(&mut self, vm_code: &str) -> Result<(), String> {
-            let asm_code = CodeGenerator::new("VM").translate(&vm_code)?;
-            println!("{}", asm_code);
+            let mut code_gen = CodeGenerator::new("VM");
+
+            let vm_instructions = CodeGenerator::parse(vm_code);
+
+            let vm_instructions = CodeGenerator::optimize(vm_instructions);
+
+            let asm_code = code_gen.translate(vm_instructions)?;
+
             let binary_code = assemble(&asm_code)?;
 
             let mut emu = Computer::new(binary_code);
