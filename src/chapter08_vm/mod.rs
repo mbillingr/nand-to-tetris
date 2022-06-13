@@ -15,6 +15,46 @@ mod tests {
     const TEMP_START_ADDR: u16 = 5;
     const TEMP_END_ADDR: u16 = 13;
 
+    struct VmBuilder {
+        code_gen: CodeGenerator,
+        asm_code: String,
+    }
+
+    impl VmBuilder {
+        fn new() -> Self {
+            VmBuilder {
+                code_gen: CodeGenerator::new("VM"),
+                asm_code: String::new(),
+            }
+        }
+
+        fn build(&self) -> VmRunner {
+            let binary_code = assemble(&self.asm_code).unwrap();
+
+            let mut emu = Computer::new(binary_code);
+
+            // initialize virtual register defaults
+            emu.ram[SP as usize] = STACK_START_ADDR;
+            emu.ram[LCL as usize] = LOCAL_START_ADDR;
+            emu.ram[ARG as usize] = ARG_START_ADDR;
+            emu.ram[THIS as usize] = THIS_START_ADDR;
+            emu.ram[THAT as usize] = THAT_START_ADDR;
+
+            VmRunner { emu }
+        }
+
+        fn add_module(&mut self, name: &str, vm_code: &str) -> Result<(), String> {
+            let vm_instructions = CodeGenerator::parse(vm_code);
+            let vm_instructions = CodeGenerator::optimize(vm_instructions);
+
+            self.code_gen.set_module_name(name);
+
+            self.asm_code += &self.code_gen.translate(vm_instructions)?;
+
+            Ok(())
+        }
+    }
+
     struct VmRunner {
         emu: Computer,
     }
@@ -33,25 +73,8 @@ mod tests {
             VmRunner { emu }
         }
 
-        fn run(&mut self, vm_code: &str) -> Result<(), String> {
-            let mut code_gen = CodeGenerator::new("VM");
-
-            let vm_instructions = CodeGenerator::parse(vm_code);
-
-            let vm_instructions = CodeGenerator::optimize(vm_instructions);
-
-            let asm_code = code_gen.translate(vm_instructions)?;
-
-            let binary_code = assemble(&asm_code)?;
-
-            let mut emu = Computer::new(binary_code);
-            emu.ram = self.emu.ram.clone();
-
-            emu.run();
-
-            self.emu = emu;
-
-            Ok(())
+        fn run(&mut self) {
+            self.emu.run()
         }
 
         fn get_ram(&self) -> &[u16] {
@@ -92,9 +115,9 @@ mod tests {
 
     #[test]
     fn basic_loop() {
-        let mut vm = VmRunner::new();
-        vm.set_arg(0, 4);
-        vm.run(
+        let mut vmb = VmBuilder::new();
+        vmb.add_module(
+            "BasicLoop",
             "
             push constant 0
             pop local 0
@@ -113,15 +136,17 @@ mod tests {
             ",
         )
         .unwrap();
+        let mut vm = vmb.build();
+        vm.set_arg(0, 4);
+        vm.run();
         assert_eq!(vm.get_stack(), [10]);
     }
 
     #[test]
     fn fibonacci() {
-        let mut vm = VmRunner::new();
-        vm.set_arg(0, 8);
-        vm.set_arg(1, 3000);
-        vm.run(
+        let mut vmb = VmBuilder::new();
+        vmb.add_module(
+            "Fibonacci",
             "
             push argument 1
             pop pointer 1
@@ -164,6 +189,35 @@ mod tests {
             ",
         )
         .unwrap();
+        let mut vm = vmb.build();
+        vm.set_arg(0, 8);
+        vm.set_arg(1, 3000);
+        vm.run();
         assert_eq!(vm.get_ram()[3000..3008], [0, 1, 1, 2, 3, 5, 8, 13]);
+    }
+
+    #[test]
+    fn simple_function() {
+        let mut vmb = VmBuilder::new();
+        vmb.add_module(
+            "SimpleFunction",
+            "
+            function SimpleFunction.test 2
+            push local 0
+            push local 1
+            add
+            not
+            push argument 0
+            add
+            push argument 1
+            sub
+            return
+            ",
+        )
+        .unwrap();
+        let mut vm = vmb.build();
+        todo!("set up runtime");
+        vm.run();
+        todo!("assert results")
     }
 }

@@ -16,6 +16,10 @@ impl CodeGenerator {
         }
     }
 
+    pub fn set_module_name(&mut self, module: impl Into<String>) {
+        self.module_name = module.into()
+    }
+
     pub fn parse<'s>(src: &'s str) -> impl Iterator<Item = Result<Command, String>> + 's {
         let mut parser = Parser::new(src);
 
