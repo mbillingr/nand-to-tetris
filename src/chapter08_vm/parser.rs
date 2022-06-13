@@ -1,9 +1,9 @@
-use std::fmt::{Display, Formatter};
 use crate::chapter06_assembler::parser::FromStrNocopy;
 use crate::chapter07_vm::parser::Command as StackCmd;
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Eq, PartialEq)]
-enum Command<'s> {
+pub enum Command<'s> {
     Stack(StackCmd),
     Label(&'s str),
     Goto(&'s str),
@@ -42,7 +42,7 @@ impl Display for Command<'_> {
             Command::IfGoto(label) => write!(f, "if-goto {}", label),
             Command::Function(name, n) => write!(f, "function {} {}", name, n),
             Command::Call(name, n) => write!(f, "call {} {}", name, n),
-            Command::Return => write!(f, "return")
+            Command::Return => write!(f, "return"),
         }
     }
 }

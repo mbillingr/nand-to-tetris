@@ -1,3 +1,4 @@
+pub mod optimizer;
 pub mod parser;
 pub mod translator;
 
@@ -7,18 +8,18 @@ pub const TRUE: u16 = (-1i16) as u16;
 pub const FALSE: u16 = 0;
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
     use super::*;
     use crate::chapter06_assembler::assembler::{assemble, ARG, LCL, SP, THAT, THIS};
     use crate::chapter07_vm::translator::CodeGenerator;
     use crate::computer_emulator::Computer;
 
-    pub const LOCAL_START_ADDR: u16 = 300;
-    pub const ARG_START_ADDR: u16 = 400;
-    pub const THIS_START_ADDR: u16 = 3000;
-    pub const THAT_START_ADDR: u16 = 3010;
-    pub const TEMP_START_ADDR: u16 = 5;
-    pub const TEMP_END_ADDR: u16 = 13;
+    const LOCAL_START_ADDR: u16 = 300;
+    const ARG_START_ADDR: u16 = 400;
+    const THIS_START_ADDR: u16 = 3000;
+    const THAT_START_ADDR: u16 = 3010;
+    const TEMP_START_ADDR: u16 = 5;
+    const TEMP_END_ADDR: u16 = 13;
 
     struct VmRunner {
         emu: Computer,

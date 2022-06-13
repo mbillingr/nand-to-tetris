@@ -1,5 +1,6 @@
 use crate::chapter06_assembler::assembler::THIS;
 use crate::chapter06_assembler::parser::Parser;
+use crate::chapter07_vm::optimizer::optimize_pair;
 use crate::chapter07_vm::parser::{ArithmeticCmd, Command, Segment};
 
 pub struct CodeGenerator {
@@ -34,7 +35,6 @@ impl CodeGenerator {
     pub fn optimize(
         cmds: impl Iterator<Item = Result<Command, String>>,
     ) -> Box<dyn Iterator<Item = Result<Command, String>>> {
-        use Command::*;
         let mut command_buffer: Vec<Command> = vec![];
         for cmd in cmds {
             match cmd {
@@ -52,14 +52,14 @@ impl CodeGenerator {
                         command_buffer.push(b);
                         break;
                     }
-                    (Some(Push(src, i)), Some(Pop(dst, j))) => {
-                        command_buffer.push(Command::Move(src, i, dst, j))
-                    }
-                    (Some(a), Some(b)) => {
-                        command_buffer.push(a);
-                        command_buffer.push(b);
-                        break;
-                    }
+                    (Some(a), Some(b)) => match optimize_pair(a, b) {
+                        Ok(opt) => command_buffer.push(opt),
+                        Err((a, b)) => {
+                            command_buffer.push(a);
+                            command_buffer.push(b);
+                            break;
+                        }
+                    },
                     _ => unreachable!(),
                 }
             }
@@ -76,17 +76,21 @@ impl CodeGenerator {
             let instruction = instruction?;
             asm_code += &format!("// {}\n", instruction);
 
-            match instruction {
-                Command::Arithmetic(ac) => asm_code += &self.gen_arithmetic_cmd(ac),
-                Command::Push(segment, index) => asm_code += &self.gen_push_cmd(segment, index),
-                Command::Pop(segment, index) => asm_code += &self.gen_pop_cmd(segment, index),
-                Command::Move(src, i, dst, j) => asm_code += &self.gen_move_cmd(src, i, dst, j),
-            }
+            asm_code += &self.gen_instruction(instruction);
 
             asm_code += "\n";
         }
 
         Ok(asm_code)
+    }
+
+    pub fn gen_instruction(&mut self, instruction: Command) -> String {
+        match instruction {
+            Command::Arithmetic(ac) => self.gen_arithmetic_cmd(ac),
+            Command::Push(segment, index) => self.gen_push_cmd(segment, index),
+            Command::Pop(segment, index) => self.gen_pop_cmd(segment, index),
+            Command::Move(src, i, dst, j) => self.gen_move_cmd(src, i, dst, j),
+        }
     }
 
     fn gen_push_cmd(&self, segment: Segment, index: u16) -> String {
@@ -286,8 +290,8 @@ M=M+1
     }
 }
 
-const POPD: &'static str = "@SP\nM=M-1\nA=M\nD=M\n";
-const PUSHD: &'static str = "@SP\nA=M\nM=D\n@SP\nM=M+1\n";
+pub const POPD: &'static str = "@SP\nM=M-1\nA=M\nD=M\n";
+pub const PUSHD: &'static str = "@SP\nA=M\nM=D\n@SP\nM=M+1\n";
 
 #[cfg(test)]
 mod tests {
