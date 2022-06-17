@@ -1,3 +1,4 @@
+use crate::asm;
 use crate::chapter06_assembler::parser::Parser;
 use crate::chapter07_vm::optimizer::optimize_pair;
 use crate::chapter07_vm::translator::{CodeGenerator as CodeGen07, POPD};
@@ -100,7 +101,35 @@ impl CodeGenerator {
             Command::Label(label) => format!("({})\n", label),
             Command::Goto(label) => format!("@{}\n0;JMP\n", label),
             Command::IfGoto(label) => format!("{POPD}@{}\nD;JNE\n", label),
+            Command::Function(name, n_locals) => self.gen_function(name, n_locals),
+            Command::Return => self.gen_return(),
             _ => todo!("{:?}", instruction),
         }
+    }
+
+    fn gen_function(&mut self, name: &str, n_locals: u16) -> String {
+        let mut asm = format!("({})\n", name);
+        for _ in 0..n_locals {
+            asm += "push constant 0";
+        }
+        asm
+    }
+
+    fn gen_return(&mut self) -> String {
+        let mut asm = String::new();
+        asm += asm!(
+            frame = LCL;
+            ret_addr = (*(frame - 5));
+            (*ARG) = (*(SP - 1));
+            SP = (ARG + 1);
+            THAT = (*(frame - 1))
+        );
+        println!("{}", asm);
+        todo!();
+        asm += "\
+
+goto ret_addr
+";
+        asm
     }
 }
