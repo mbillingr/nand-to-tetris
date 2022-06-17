@@ -118,18 +118,15 @@ impl CodeGenerator {
     fn gen_return(&mut self) -> String {
         let mut asm = String::new();
         asm += asm!(
-            frame = LCL;
-            ret_addr = (*(frame - 5));
-            (*ARG) = (*(SP - 1));
-            SP = (ARG + 1);
-            THAT = (*(frame - 1))
+            ((*ARG) = (*(SP - 1)));
+            (SP = (ARG + 1));
+            (THAT = (*(--LCL)));
+            (THIS = (*(--LCL)));
+            (ARG = (*(--LCL)));
+            (R15 = (*(LCL - 2)));
+            (LCL = (*(--LCL)));
+            (goto R15)
         );
-        println!("{}", asm);
-        todo!();
-        asm += "\
-
-goto ret_addr
-";
         asm
     }
 }

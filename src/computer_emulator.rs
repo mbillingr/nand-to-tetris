@@ -18,6 +18,7 @@ pub struct Computer {
     rom: Vec<u16>,
     pub ram: Vec<u16>,
     io: Arc<dyn IoCallback>,
+    registers: (u16, u16, u16),
 }
 
 const SCREEN_START_ADDR: u16 = 0x4000;
@@ -31,6 +32,7 @@ impl Computer {
             rom,
             ram: vec![0; 65536],
             io: Arc::new(()),
+            registers: (0, 0, 0),
         }
     }
 
@@ -40,6 +42,14 @@ impl Computer {
 
     pub fn get_ram(&self, addr: u16) -> u16 {
         self.ram[addr as usize]
+    }
+
+    pub fn set_ram(&mut self, addr: u16, value: u16) {
+        self.ram[addr as usize] = value
+    }
+
+    pub fn get_pc(&self) -> u16 {
+        self.registers.0
     }
 
     fn read_memory(&self, addr: u16) -> u16 {
@@ -63,21 +73,20 @@ impl Computer {
     }
 
     pub fn run(&mut self) {
-        let mut pc = 0;
-        let mut a = 0;
-        let mut d = 0;
+        let (pc_, mut a, mut d) = self.registers;
+        let mut pc = pc_ as usize;
 
         loop {
             if self.io.is_disconnected() {
-                return;
+                break;
             }
 
             if self.stop.load(Ordering::Relaxed) {
-                return;
+                break;
             }
 
             if pc >= self.rom.len() {
-                return;
+                break;
             }
 
             let op = self.rom[pc];
@@ -139,6 +148,8 @@ impl Computer {
                 }
             }
         }
+
+        self.registers = (pc as u16, a, d);
     }
 }
 

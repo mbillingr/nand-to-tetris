@@ -86,16 +86,43 @@ mod tests {
             &self.emu.ram[STACK_START_ADDR as usize..sp]
         }
 
+        fn push(&mut self, value: i16) {
+            let sp = self.emu.get_ram(SP) as usize;
+            self.emu.ram[sp] = value as u16;
+            self.emu.set_ram(SP, sp as u16 + 1)
+        }
+
+        fn get_sp_ptr(&self) -> u16 {
+            self.emu.get_ram(SP)
+        }
+
         fn get_locals(&self) -> &[u16] {
             &self.emu.ram[LOCAL_START_ADDR as usize..]
         }
 
-        fn get_args(&self) -> &[u16] {
+        fn get_lcl_ptr(&self) -> u16 {
+            self.emu.get_ram(LCL)
+        }
+
+        fn set_lcl_ptr(&mut self, value: u16) {
+            self.emu.set_ram(LCL, value)
+        }
+
+        fn get_arg_ptr(&self) -> u16 {
+            self.emu.get_ram(ARG)
+        }
+
+        fn set_arg_ptr(&mut self, value: u16) {
+            self.emu.set_ram(ARG, value)
+        }
+
+        fn get_arguments(&self) -> &[u16] {
             &self.emu.ram[ARG_START_ADDR as usize..]
         }
 
-        fn set_arg(&mut self, idx: usize, value: u16) {
-            self.emu.ram[idx + ARG_START_ADDR as usize] = value
+        fn set_argument(&mut self, idx: usize, value: u16) {
+            let arg = self.emu.get_ram(ARG);
+            self.emu.ram[idx + arg as usize] = value
         }
 
         fn get_this(&self) -> &[u16] {
@@ -106,6 +133,14 @@ mod tests {
         fn get_that(&self) -> &[u16] {
             let that = self.emu.get_ram(THAT) as usize;
             &self.emu.ram[that..]
+        }
+
+        fn get_this_ptr(&self) -> u16 {
+            self.emu.get_ram(THIS)
+        }
+
+        fn get_that_ptr(&self) -> u16 {
+            self.emu.get_ram(THAT)
         }
 
         fn get_temp(&self) -> &[u16] {
@@ -137,7 +172,7 @@ mod tests {
         )
         .unwrap();
         let mut vm = vmb.build();
-        vm.set_arg(0, 4);
+        vm.set_argument(0, 4);
         vm.run();
         assert_eq!(vm.get_stack(), [10]);
     }
@@ -190,10 +225,49 @@ mod tests {
         )
         .unwrap();
         let mut vm = vmb.build();
-        vm.set_arg(0, 8);
-        vm.set_arg(1, 3000);
+        vm.set_argument(0, 8);
+        vm.set_argument(1, 3000);
         vm.run();
         assert_eq!(vm.get_ram()[3000..3008], [0, 1, 1, 2, 3, 5, 8, 13]);
+    }
+
+    #[test]
+    fn return_command() {
+        let mut vmb = VmBuilder::new();
+        vmb.add_module("JustReturn", "return").unwrap();
+        let mut vm = vmb.build();
+        // set up an artifical stack frame to return from
+        // some dummy values
+        vm.push(3);
+        vm.push(2);
+        vm.push(1);
+        // arguments
+        vm.set_arg_ptr(vm.get_sp_ptr());
+        vm.push(10);
+        vm.push(11);
+        vm.push(12);
+        // saved stats
+        vm.push(-1); // return address
+        vm.push(1111); // LCL
+        vm.push(2222); // ARG
+        vm.push(3333); // THIS
+        vm.push(4444); // THAT
+                       // locals
+        vm.set_lcl_ptr(vm.get_sp_ptr());
+        vm.push(100);
+        vm.push(101);
+        vm.push(102);
+        println!("{:?}", vm.get_stack());
+        vm.run();
+        println!("{:?}", vm.get_stack());
+        println!("{:?}", &vm.get_ram()[..32]);
+
+        assert_eq!(vm.get_stack(), &[3, 2, 1, 102]);
+        assert_eq!(vm.get_that_ptr(), 4444);
+        assert_eq!(vm.get_this_ptr(), 3333);
+        assert_eq!(vm.get_arg_ptr(), 2222);
+        assert_eq!(vm.get_lcl_ptr(), 1111);
+        assert_eq!(vm.emu.get_pc(), (-1_i16) as u16);
     }
 
     #[test]

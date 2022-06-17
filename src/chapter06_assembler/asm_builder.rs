@@ -1,12 +1,16 @@
 #[macro_export]
 macro_rules! asm {
-    ($($lhs:tt = $rhs:tt);*) => {
+    ($(($($stmt:tt)*));* $(;)?) => {
         concat!($(
             concat!(
-                asm!(@comment $lhs = $rhs),
-                asm!(@op $lhs = $rhs),
+                asm!(@comment $($stmt)*),
+                asm!(@op $($stmt)*),
             )
         ),*)
+    };
+
+    (@op goto $target:tt) => {
+        concat!($crate::asm_rval!($target), "0;JMP\n")
     };
 
     (@op $dst:tt = [0]) => {
@@ -31,9 +35,9 @@ macro_rules! asm {
         )
     };
 
-    (@comment $dst:tt = $src:tt) => {
+    (@comment $($stmt:tt)*) => {
         concat!(
-            "// ", stringify!($dst), " = ", stringify!($src), "\n",
+            "//", $(" ", stringify!($stmt)),*, "\n",
         )
     };
 }
@@ -48,6 +52,18 @@ macro_rules! asm_rval {
     // deref operation
     (* $operand:tt) => {
         concat!($crate::asm_rval!($operand), "A=M\n")
+    };
+
+    // pre-increment
+    (++ $inner:tt) => {
+        // inner must be an l-value
+        concat!($crate::asm_lval!($inner), "AM=M+1\n")
+    };
+
+    // pre-decrement
+    (-- $inner:tt) => {
+        // inner must be an l-value
+        concat!($crate::asm_lval!($inner), "AM=M-1\n")
     };
 
     // simple increment
@@ -82,7 +98,7 @@ macro_rules! asm_rval {
 
     // simple decrement #2
     ($left:tt - 2) => {
-        asm_rval!(($left - 1) - 1)
+        $crate::asm_rval!(($left - 1) - 1)
     };
 
     // generic decrement (only allowed on right hand side because it uses D)
@@ -91,8 +107,8 @@ macro_rules! asm_rval {
     };
 
     // symbolic identifier (variable name)
-    ($name:ident) => {
-        concat!("@", stringify!($name), "\nA=M\n")
+    ($var:ident) => {
+        concat!("@", stringify!($var), "\nA=M\n")
     };
 
     // constant
@@ -153,7 +169,10 @@ macro_rules! asm_lval {
 mod tests {
     #[test]
     fn variable_assignment() {
-        assert_eq!(asm!(foo = bar), "// foo = bar\n@bar\nA=M\nD=A\n@foo\nM=D\n");
+        assert_eq!(
+            asm!((foo = bar)),
+            "// foo = bar\n@bar\nA=M\nD=A\n@foo\nM=D\n"
+        );
     }
 
     #[test]
@@ -241,8 +260,22 @@ mod tests {
     #[test]
     fn multiple_instructions() {
         assert_eq!(
-            asm!(SP = 0; (*SP) = 42; SP = (SP + 1)),
-            concat!(asm!(SP = 0), asm!((*SP) = 42), asm!(SP = (SP + 1)))
+            asm!((SP = 0); ((*SP) = 42); (SP = (SP + 1))),
+            concat!(asm!((SP = 0)), asm!(((*SP) = 42)), asm!((SP = (SP + 1))))
+        );
+    }
+
+    #[test]
+    fn goto() {
+        assert_eq!(asm!((goto hell)), "// goto hell\n@hell\nA=M\n0;JMP\n")
+    }
+
+    #[test]
+    fn in_place_arithmetic() {
+        assert_eq!(asm_rval!(--y), "@y\nAM=M-1\n");
+        assert_eq!(
+            asm!((x = (++ y))),
+            "// x = (+ + y)\n@y\nAM=M+1\nD=A\n@x\nM=D\n"
         );
     }
 }
