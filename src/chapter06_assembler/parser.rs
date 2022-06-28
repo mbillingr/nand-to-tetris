@@ -88,7 +88,7 @@ where
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum Instruction<'s> {
     A(&'s str),
     L(&'s str),
@@ -149,6 +149,19 @@ impl<'s> Instruction<'s> {
         match self {
             Instruction::C(_, _, jump) => Some(*jump),
             _ => None,
+        }
+    }
+}
+
+impl Display for Instruction<'_> {
+    fn fmt(&self, f: &mut Formatter) -> std::fmt::Result {
+        match self {
+            Instruction::A(s) => write!(f, "@{}", s),
+            Instruction::L(s) => write!(f, "({})", s),
+            Instruction::C(Dest::None, comp, Jump::None) => write!(f, "{}", comp),
+            Instruction::C(dest, comp, Jump::None) => write!(f, "{}={}", dest, comp),
+            Instruction::C(Dest::None, comp, jump) => write!(f, "{};{}", comp, jump),
+            Instruction::C(dest, comp, jump) => write!(f, "{}={};{}", dest, comp, jump),
         }
     }
 }

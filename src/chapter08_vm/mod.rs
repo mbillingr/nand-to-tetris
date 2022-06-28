@@ -4,6 +4,7 @@ pub mod translator;
 #[cfg(test)]
 mod tests {
     use crate::chapter06_assembler::assembler::{assemble, ARG, LCL, SP, THAT, THIS};
+    use crate::chapter06_assembler::optimizer::PeepholeOptimizer;
     use crate::chapter07_vm::STACK_START_ADDR;
     use crate::chapter08_vm::translator::CodeGenerator;
     use crate::computer_emulator::Computer;
@@ -29,7 +30,11 @@ mod tests {
         }
 
         fn build(&self) -> VmRunner {
-            let binary_code = assemble(&self.asm_code).unwrap();
+            let optimized_asm = PeepholeOptimizer::default()
+                .optimize_str(&self.asm_code)
+                .unwrap();
+            println!("{}", optimized_asm);
+            let binary_code = assemble(&optimized_asm).unwrap();
 
             let mut emu = Computer::new(binary_code);
 
