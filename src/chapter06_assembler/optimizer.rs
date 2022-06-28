@@ -238,64 +238,55 @@ impl<'s> PeepholeRule<'s> for RemoveNops {
 mod tests {
     use super::*;
 
-    #[test]
-    fn indirect_assignment() {
-        let code = vec![
-            C(Dest::A, Comp::M, Jump::None),
-            C(Dest::D, Comp::A, Jump::None),
-            A("ARG"),
-        ];
-
-        let opt = PeepholeOptimizer::default();
-        let result = opt.optimize(code);
-
-        assert_eq!(result, [C(Dest::D, Comp::M, Jump::None), A("ARG"),]);
-    }
-
-    #[test]
-    fn trivial_constant4() {
-        let code = vec![
-            A("0"),
-            C(Dest::D, Comp::A, Jump::None),
-            A("ARG"),
-            C(Dest::M, Comp::D, Jump::None),
-        ];
-
-        let opt = PeepholeOptimizer::default();
-        let result = opt.optimize(code);
-
-        assert_eq!(result, [A("ARG"), C(Dest::M, Comp::Zero, Jump::None),]);
-    }
-
-    #[test]
-    fn trivial_constant5() {
-        let code = vec![
-            A("0"),
-            C(Dest::D, Comp::A, Jump::None),
-            A("ARG"),
-            C(Dest::A, Comp::IncM, Jump::None),
-            C(Dest::M, Comp::D, Jump::None),
-        ];
-
-        let opt = PeepholeOptimizer::default();
-        let result = opt.optimize(code);
-
-        assert_eq!(
-            result,
-            [
-                A("ARG"),
-                C(Dest::A, Comp::IncM, Jump::None),
-                C(Dest::M, Comp::Zero, Jump::None),
-            ]
-        );
-    }
-
     macro_rules! assert_opt {
         ($code:expr, $expect:expr) => {{
             let opt = PeepholeOptimizer::default();
             let result = opt.optimize($code);
             assert_eq!(result, $expect);
         }};
+    }
+
+    #[test]
+    fn indirect_assignment() {
+        assert_opt!(
+            [
+                C(Dest::A, Comp::M, Jump::None),
+                C(Dest::D, Comp::A, Jump::None),
+                A("ARG"),
+            ],
+            [C(Dest::D, Comp::M, Jump::None), A("ARG"),]
+        );
+    }
+
+    #[test]
+    fn trivial_constant4() {
+        assert_opt!(
+            [
+                A("0"),
+                C(Dest::D, Comp::A, Jump::None),
+                A("ARG"),
+                C(Dest::M, Comp::D, Jump::None),
+            ],
+            [A("ARG"), C(Dest::M, Comp::Zero, Jump::None),]
+        );
+    }
+
+    #[test]
+    fn trivial_constant5() {
+        assert_opt!(
+            [
+                A("0"),
+                C(Dest::D, Comp::A, Jump::None),
+                A("ARG"),
+                C(Dest::A, Comp::IncM, Jump::None),
+                C(Dest::M, Comp::D, Jump::None),
+            ],
+            [
+                A("ARG"),
+                C(Dest::A, Comp::IncM, Jump::None),
+                C(Dest::M, Comp::Zero, Jump::None),
+            ]
+        );
     }
 
     #[test]
