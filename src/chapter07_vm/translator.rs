@@ -93,7 +93,6 @@ impl CodeGenerator {
             Command::Arithmetic(ac) => self.gen_arithmetic_cmd(ac),
             Command::Push(segment, index) => self.gen_push_cmd(segment, index),
             Command::Pop(segment, index) => self.gen_pop_cmd(segment, index),
-            Command::Move(src, i, dst, j) => self.gen_move_cmd(src, i, dst, j),
         }
     }
 
@@ -129,60 +128,6 @@ impl CodeGenerator {
             ArithmeticCmd::Or => self.gen_binary_cmd("M=D|M"),
             ArithmeticCmd::Not => self.gen_unary_cmd("M=!M"),
         }
-    }
-
-    fn gen_move_cmd(&self, src: Segment, i: u16, dst: Segment, j: u16) -> String {
-        let mut asm = String::new();
-        match src {
-            Segment::Constant => return self.gen_store_constant(i, dst, j),
-            Segment::Temp => asm += &format!("@{}\nD=M\n", 5 + i),
-            Segment::Pointer => asm += &format!("@{}\nD=M\n", THIS + i),
-            Segment::Static => asm += &format!("@{}.{}\nD=M\n", self.module_name, i),
-            s => {
-                asm += &self.gen_compute_offset(s.register_name().unwrap(), i);
-                asm += "D=M\n"
-            }
-        }
-
-        match dst {
-            Segment::Constant => return String::new(), // just ignore writing into constants
-            Segment::Temp => asm += &format!("@{}\nM=D", 5 + j),
-            Segment::Pointer => asm += &format!("@{}\nM=D", THIS + j),
-            Segment::Static => asm += &format!("@{}.{}\nM=D", self.module_name, j),
-            s => asm += &self.gen_write_to_offsetptr(s.register_name().unwrap(), j),
-        }
-
-        asm
-    }
-
-    fn gen_store_constant(&self, value: u16, dst: Segment, j: u16) -> String {
-        let mut asm = String::new();
-
-        match dst {
-            Segment::Constant => return String::new(), // just ignore writing into constants
-            Segment::Temp => asm += &format!("@{}\nD=A\n@{}\nM=D", value, 5 + j),
-            Segment::Pointer => asm += &format!("@{}\nD=A\n@{}\nM=D", value, THIS + j),
-            Segment::Static => asm += &format!("@{}\nD=A\n@{}.{}\nM=D", value, self.module_name, j),
-            s => match j {
-                0 | 1 | 2 | 3 => {
-                    asm += &format!(
-                        "@{}\nD=A\n{}M=D",
-                        value,
-                        self.gen_compute_offset(s.register_name().unwrap(), j)
-                    )
-                }
-                _ => {
-                    asm += &format!(
-                        "@{}\nD=A\n@{}\nD=D+M\n@R14\nM=D\n@{}\nD=A\n@R14\nA=M\nM=D\n",
-                        j,
-                        s.register_name().unwrap(),
-                        value
-                    )
-                }
-            },
-        }
-
-        asm
     }
 
     /// Command with one argument. Expects input and output in M register and preserve A.
@@ -239,16 +184,6 @@ impl CodeGenerator {
             0 | 1 | 2 | 3 => format!("{POPD}{}M=D", self.gen_compute_offset(ptr, offset)),
             _ => format!(
                 "@{}\nD=A\n@{}\nD=D+M\n@R15\nM=D\n{POPD}@R15\nA=M\nM=D",
-                offset, ptr
-            ),
-        }
-    }
-
-    fn gen_write_to_offsetptr(&self, ptr: &str, offset: u16) -> String {
-        match offset {
-            0 | 1 | 2 | 3 => format!("{}M=D", self.gen_compute_offset(ptr, offset)),
-            _ => format!(
-                "@R15\nM=D\n@{}\nD=A\n@{}\nD=D+M\n@R14\nM=D\n@R15\nD=M\n@R14\nA=M\nM=D\n",
                 offset, ptr
             ),
         }

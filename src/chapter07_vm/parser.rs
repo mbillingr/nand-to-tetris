@@ -7,8 +7,6 @@ pub enum Command {
     Arithmetic(ArithmeticCmd),
     Push(Segment, u16),
     Pop(Segment, u16),
-
-    Move(Segment, u16, Segment, u16),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -42,8 +40,6 @@ impl Display for Command {
             Command::Arithmetic(ac) => write!(f, "{}", ac),
             Command::Push(seg, idx) => write!(f, "push {} {}", seg, idx),
             Command::Pop(seg, idx) => write!(f, "pop {} {}", seg, idx),
-
-            Command::Move(src, i, dst, j) => write!(f, "push {} {}; pop {} {}", src, i, dst, j),
         }
     }
 }
