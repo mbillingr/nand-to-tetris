@@ -234,6 +234,7 @@ mod tests {
         vm.set_argument(1, 3000);
         vm.run();
         assert_eq!(vm.get_ram()[3000..3008], [0, 1, 1, 2, 3, 5, 8, 13]);
+        assert_eq!(vm.get_stack(), []);
     }
 
     #[test]

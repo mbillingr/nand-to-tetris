@@ -18,6 +18,10 @@ impl<'s> Default for PeepholeOptimizer<'s> {
                 Box::new(IndirectAssignment),
                 Box::new(TrivialConstant4),
                 Box::new(TrivialConstant5),
+                Box::new(RedundantInstruction),
+                Box::new(UselessPairs),
+                Box::new(DegenerateStackoperation),
+                Box::new(RemoveNops),
             ],
         }
     }
@@ -144,6 +148,92 @@ impl<'s> PeepholeRule<'s> for TrivialConstant5 {
     }
 }
 
+struct RedundantInstruction;
+
+impl<'s> PeepholeRule<'s> for RedundantInstruction {
+    fn pattern_length(&self) -> usize {
+        3
+    }
+
+    fn apply(&self, ops: &[Instruction<'s>]) -> Option<Vec<Instruction<'s>>> {
+        match ops {
+            [A(x), op @ C(Dest::D | Dest::M | Dest::DM, _, Jump::None), A(y)] if x == y => {
+                Some(vec![A(x), *op])
+            }
+            _ => None,
+        }
+    }
+}
+
+struct UselessPairs;
+
+impl<'s> PeepholeRule<'s> for UselessPairs {
+    fn pattern_length(&self) -> usize {
+        2
+    }
+
+    fn apply(&self, ops: &[Instruction<'s>]) -> Option<Vec<Instruction<'s>>> {
+        match ops {
+            [C(Dest::A, Comp::IncA, Jump::None), C(Dest::A, Comp::DecA, Jump::None)]
+            | [C(Dest::A, Comp::DecA, Jump::None), C(Dest::A, Comp::IncA, Jump::None)]
+            | [C(Dest::A, Comp::NegA, Jump::None), C(Dest::A, Comp::NegA, Jump::None)]
+            | [C(Dest::A, Comp::NotA, Jump::None), C(Dest::A, Comp::NotA, Jump::None)]
+            | [C(Dest::A, Comp::AminusD, Jump::None), C(Dest::A, Comp::DplusA, Jump::None)]
+            | [C(Dest::A, Comp::DplusA, Jump::None), C(Dest::A, Comp::AminusD, Jump::None)]
+            | [C(Dest::D, Comp::IncD, Jump::None), C(Dest::D, Comp::DecD, Jump::None)]
+            | [C(Dest::D, Comp::DecD, Jump::None), C(Dest::D, Comp::IncD, Jump::None)]
+            | [C(Dest::D, Comp::NegD, Jump::None), C(Dest::D, Comp::NegD, Jump::None)]
+            | [C(Dest::D, Comp::NotD, Jump::None), C(Dest::D, Comp::NotD, Jump::None)]
+            | [C(Dest::D, Comp::DminusA, Jump::None), C(Dest::D, Comp::DplusA, Jump::None)]
+            | [C(Dest::D, Comp::DplusA, Jump::None), C(Dest::D, Comp::DminusA, Jump::None)]
+            | [C(Dest::M, Comp::IncM, Jump::None), C(Dest::M, Comp::DecM, Jump::None)]
+            | [C(Dest::M, Comp::DecM, Jump::None), C(Dest::M, Comp::IncM, Jump::None)]
+            | [C(Dest::M, Comp::NegM, Jump::None), C(Dest::M, Comp::NegM, Jump::None)]
+            | [C(Dest::M, Comp::NotM, Jump::None), C(Dest::M, Comp::NotM, Jump::None)]
+            | [C(Dest::M, Comp::MminusD, Jump::None), C(Dest::M, Comp::DplusM, Jump::None)]
+            | [C(Dest::M, Comp::DplusM, Jump::None), C(Dest::M, Comp::MminusD, Jump::None)] => {
+                Some(vec![])
+            }
+            _ => None,
+        }
+    }
+}
+
+struct DegenerateStackoperation;
+
+impl<'s> PeepholeRule<'s> for DegenerateStackoperation {
+    fn pattern_length(&self) -> usize {
+        6
+    }
+
+    fn apply(&self, ops: &[Instruction<'s>]) -> Option<Vec<Instruction<'s>>> {
+        match ops {
+            [A("SP"), C(Dest::A, Comp::M, Jump::None), C(Dest::M, comp, Jump::None), A("SP"), C(Dest::A, Comp::M, Jump::None), C(dest, Comp::M, jmp)] => {
+                Some(vec![C(*dest, *comp, *jmp)])
+            }
+            _ => None,
+        }
+    }
+}
+
+struct RemoveNops;
+
+impl<'s> PeepholeRule<'s> for RemoveNops {
+    fn pattern_length(&self) -> usize {
+        1
+    }
+
+    fn apply(&self, ops: &[Instruction<'s>]) -> Option<Vec<Instruction<'s>>> {
+        match ops {
+            [C(Dest::None, _, Jump::None)]
+            | [C(Dest::A, Comp::A, Jump::None)]
+            | [C(Dest::D, Comp::D, Jump::None)]
+            | [C(Dest::M, Comp::M, Jump::None)] => Some(vec![]),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -198,5 +288,69 @@ mod tests {
                 C(Dest::M, Comp::Zero, Jump::None),
             ]
         );
+    }
+
+    macro_rules! assert_opt {
+        ($code:expr, $expect:expr) => {{
+            let opt = PeepholeOptimizer::default();
+            let result = opt.optimize($code);
+            assert_eq!(result, $expect);
+        }};
+    }
+
+    #[test]
+    fn redundant_instruction() {
+        assert_opt!(
+            [A("FOO"), C(Dest::M, Comp::A, Jump::None), A("FOO")],
+            [A("FOO"), C(Dest::M, Comp::A, Jump::None)]
+        );
+    }
+
+    #[test]
+    fn useless_pairs() {
+        assert_opt!(
+            [
+                C(Dest::M, Comp::IncM, Jump::None),
+                C(Dest::M, Comp::DecM, Jump::None)
+            ],
+            []
+        );
+        assert_opt!(
+            [
+                C(Dest::M, Comp::DecM, Jump::None),
+                C(Dest::M, Comp::IncM, Jump::None)
+            ],
+            []
+        );
+        assert_opt!(
+            [
+                C(Dest::D, Comp::NotD, Jump::None),
+                C(Dest::D, Comp::NotD, Jump::None)
+            ],
+            []
+        );
+    }
+
+    #[test]
+    fn stack_nop() {
+        assert_opt!(
+            [
+                A("SP"),
+                C(Dest::A, Comp::M, Jump::None),
+                C(Dest::M, Comp::One, Jump::None),
+                A("SP"),
+                C(Dest::A, Comp::M, Jump::None),
+                C(Dest::D, Comp::M, Jump::None),
+            ],
+            [C(Dest::D, Comp::One, Jump::None)]
+        );
+    }
+
+    #[test]
+    fn remove_nops() {
+        assert_opt!([C(Dest::None, Comp::A, Jump::None)], []);
+        assert_opt!([C(Dest::A, Comp::A, Jump::None)], []);
+        assert_opt!([C(Dest::D, Comp::D, Jump::None)], []);
+        assert_opt!([C(Dest::M, Comp::M, Jump::None)], []);
     }
 }
