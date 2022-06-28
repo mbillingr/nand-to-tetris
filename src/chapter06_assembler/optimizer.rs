@@ -208,6 +208,7 @@ impl<'s> PeepholeRule<'s> for DegenerateStackoperation {
 
     fn apply(&self, ops: &[Instruction<'s>]) -> Option<Vec<Instruction<'s>>> {
         match ops {
+            // this simplification is only allowed on the stack, otherwise the side-effect of writing the memory location would need to be preserved.
             [A("SP"), C(Dest::A, Comp::M, Jump::None), C(Dest::M, comp, Jump::None), A("SP"), C(Dest::A, Comp::M, Jump::None), C(dest, Comp::M, jmp)] => {
                 Some(vec![C(*dest, *comp, *jmp)])
             }
