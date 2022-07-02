@@ -215,7 +215,7 @@ impl CodeGenerator {
         format!("{POPD}@{}.{}\nM=D", self.module_name, index)
     }
 
-    fn gen_push(&self, comp: &str) -> String {
+    pub fn gen_push(&self, comp: &str) -> String {
         format!(
             "\
 @SP

@@ -110,7 +110,7 @@ impl CodeGenerator {
     fn gen_function(&mut self, name: &str, n_locals: u16) -> String {
         let mut asm = format!("({})\n", name);
         for _ in 0..n_locals {
-            asm += "push constant 0";
+            asm += &self.ch7_gen.gen_push("0");
         }
         asm
     }

@@ -101,8 +101,18 @@ mod tests {
             self.emu.get_ram(SP)
         }
 
+        fn set_sp_ptr(&mut self, value: u16) {
+            self.emu.set_ram(SP, value)
+        }
+
         fn get_locals(&self) -> &[u16] {
-            &self.emu.ram[LOCAL_START_ADDR as usize..]
+            let lcl = self.emu.get_ram(LCL) as usize;
+            &self.emu.ram[lcl as usize..]
+        }
+
+        fn set_local(&mut self, offset: u16, value: u16) {
+            let lcl = self.emu.get_ram(LCL);
+            self.emu.set_ram(lcl + offset, value)
         }
 
         fn get_lcl_ptr(&self) -> u16 {
@@ -125,9 +135,9 @@ mod tests {
             &self.emu.ram[ARG_START_ADDR as usize..]
         }
 
-        fn set_argument(&mut self, idx: usize, value: u16) {
+        fn set_argument(&mut self, idx: u16, value: u16) {
             let arg = self.emu.get_ram(ARG);
-            self.emu.ram[idx + arg as usize] = value
+            self.emu.set_ram(arg + idx, value)
         }
 
         fn get_this(&self) -> &[u16] {
@@ -144,8 +154,16 @@ mod tests {
             self.emu.get_ram(THIS)
         }
 
+        fn set_this_ptr(&mut self, value: u16) {
+            self.emu.set_ram(THIS, value)
+        }
+
         fn get_that_ptr(&self) -> u16 {
             self.emu.get_ram(THAT)
+        }
+
+        fn set_that_ptr(&mut self, value: u16) {
+            self.emu.set_ram(THAT, value)
         }
 
         fn get_temp(&self) -> &[u16] {
@@ -183,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn fibonacci() {
+    fn fibonacci_series() {
         let mut vmb = VmBuilder::new();
         vmb.add_module(
             "Fibonacci",
@@ -296,8 +314,30 @@ mod tests {
         )
         .unwrap();
         let mut vm = vmb.build();
-        todo!("set up runtime");
+        vm.set_sp_ptr(317);
+        vm.set_lcl_ptr(317);
+        vm.set_arg_ptr(310);
+        vm.set_this_ptr(3000);
+        vm.set_that_ptr(4000);
+        vm.set_argument(0, 1234);
+        vm.set_argument(1, 37);
+        vm.set_argument(2, 1000);
+        vm.set_argument(3, 305);
+        vm.set_argument(4, 300);
+        vm.set_argument(5, 3010);
+        vm.set_argument(6, 4010);
         vm.run();
-        todo!("assert results")
+        assert_eq!(vm.get_sp_ptr(), 311);
+        assert_eq!(vm.get_lcl_ptr(), 305);
+        assert_eq!(vm.get_arg_ptr(), 300);
+        assert_eq!(vm.get_this_ptr(), 3010);
+        assert_eq!(vm.get_that_ptr(), 4010);
+        assert_eq!(vm.emu.get_ram(310), 1196);
+        assert_eq!(vm.get_stack().last(), Some(&1196));
+    }
+
+    #[test]
+    fn fibonacci_element() {
+        todo!()
     }
 }
