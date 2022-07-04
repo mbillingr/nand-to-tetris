@@ -20,6 +20,10 @@ impl CodeGenerator {
         self.module_name = module.into()
     }
 
+    pub fn get_module_name(&self) -> &str {
+        &self.module_name
+    }
+
     pub fn parse<'s>(src: &'s str) -> impl Iterator<Item = Result<Command, String>> + 's {
         let mut parser = Parser::new(src);
 
@@ -164,6 +168,12 @@ impl CodeGenerator {
         asm += "@SP\nA=M-1\nM=-1\n";
         asm += &format!("(CMP-END.{})\n", label);
         asm
+    }
+
+    pub fn unique_label(&mut self, label: String) -> String {
+        let count = self.label_counter.to_string();
+        self.label_counter += 1;
+        label + "." + &count
     }
 
     fn gen_push_constant(&self, value: u16) -> String {

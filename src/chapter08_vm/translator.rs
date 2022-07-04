@@ -1,4 +1,5 @@
 use crate::asm;
+use crate::chapter06_assembler::assembler::{ARG, LCL};
 use crate::chapter06_assembler::parser::Parser;
 use crate::chapter07_vm::optimizer::optimize_pair;
 use crate::chapter07_vm::translator::{CodeGenerator as CodeGen07, POPD};
@@ -6,12 +7,15 @@ use crate::chapter08_vm::parser::Command;
 
 pub struct CodeGenerator {
     ch7_gen: CodeGen07,
+    current_function: String,
 }
 
 impl CodeGenerator {
     pub fn new(module: impl Into<String>) -> Self {
+        let ch7_gen = CodeGen07::new(module);
         CodeGenerator {
-            ch7_gen: CodeGen07::new(module),
+            current_function: ch7_gen.get_module_name().to_string() + ".GLOBAL",
+            ch7_gen,
         }
     }
 
@@ -98,20 +102,51 @@ impl CodeGenerator {
     pub fn gen_instruction(&mut self, instruction: Command) -> String {
         match instruction {
             Command::Stack(sc) => self.ch7_gen.gen_instruction(sc),
-            Command::Label(label) => format!("({})\n", label),
-            Command::Goto(label) => format!("@{}\n0;JMP\n", label),
-            Command::IfGoto(label) => format!("{POPD}@{}\nD;JNE\n", label),
+            Command::Label(label) => format!("({}${})\n", self.current_function, label),
+            Command::Goto(label) => format!("@{}${}\n0;JMP\n", self.current_function, label),
+            Command::IfGoto(label) => {
+                format!("{POPD}@{}${}\nD;JNE\n", self.current_function, label)
+            }
             Command::Function(name, n_locals) => self.gen_function(name, n_locals),
+            Command::Call(name, n_args) => self.gen_funcall(name, n_args),
             Command::Return => self.gen_return(),
-            _ => todo!("{:?}", instruction),
+            Command::Halt => format!("@32767\n0;JMP\n"),
         }
     }
 
     fn gen_function(&mut self, name: &str, n_locals: u16) -> String {
+        self.current_function = name.to_string();
         let mut asm = format!("({})\n", name);
         for _ in 0..n_locals {
             asm += &self.ch7_gen.gen_push("0");
         }
+        asm
+    }
+
+    fn gen_funcall(&mut self, name: &str, n_args: u16) -> String {
+        let return_label = self
+            .ch7_gen
+            .unique_label(format!("{}$ret", self.current_function));
+        let mut asm = String::new();
+        asm += &format!("@{}\nD=A\n", return_label);
+        asm += &self.ch7_gen.gen_push("D");
+        asm += asm!(
+            ((*SP) = LCL);
+            (SP = (SP + 1));
+            ((*SP) = ARG);
+            (SP = (SP + 1));
+            ((*SP) = THIS);
+            (SP = (SP + 1));
+            ((*SP) = THAT);
+            (SP = (SP + 1));
+        );
+        asm += &format!(
+            "// ARG = SP - 5 - n_args\n@{}\nD=A\n@SP\nA=M\nD=A-D\n@ARG\nM=D\n",
+            5 + n_args
+        );
+        asm += asm!((LCL = SP));
+        asm += &format!("// goto f\n@{}\n0;JMP\n", name);
+        asm += &format!("({})", return_label);
         asm
     }
 
@@ -127,6 +162,7 @@ impl CodeGenerator {
             (LCL = (*(--LCL)));
             (goto R15)
         );
+        self.current_function = self.ch7_gen.get_module_name().to_string() + "GLOBAL";
         asm
     }
 }

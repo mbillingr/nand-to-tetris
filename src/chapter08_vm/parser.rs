@@ -11,6 +11,7 @@ pub enum Command<'s> {
     Function(&'s str, u16),
     Call(&'s str, u16),
     Return,
+    Halt,
 }
 
 impl<'s> FromStrNocopy<'s> for Command<'s> {
@@ -27,6 +28,7 @@ impl<'s> FromStrNocopy<'s> for Command<'s> {
             ["function", name, n_vars] => n_vars.parse().map(|n| Command::Function(name, n)).ok(),
             ["call", name, n_vars] => n_vars.parse().map(|n| Command::Call(name, n)).ok(),
             ["return"] => Some(Command::Return),
+            ["halt"] => Some(Command::Halt),
             _ => None,
         }
         .ok_or_else(|| format!("Invalid instruction {}", tokens.join(" ")))
@@ -43,6 +45,7 @@ impl Display for Command<'_> {
             Command::Function(name, n) => write!(f, "function {} {}", name, n),
             Command::Call(name, n) => write!(f, "call {} {}", name, n),
             Command::Return => write!(f, "return"),
+            Command::Halt => write!(f, "halt"),
         }
     }
 }

@@ -30,6 +30,7 @@ mod tests {
         }
 
         fn build(&self) -> VmRunner {
+            println!("{}", self.asm_code);
             let optimized_asm = PeepholeOptimizer::default()
                 .optimize_str(&self.asm_code)
                 .unwrap();
@@ -338,6 +339,23 @@ mod tests {
 
     #[test]
     fn fibonacci_element() {
-        todo!()
+        let sys = "\
+            function Sys.init 0
+            push constant 4
+            call Main.fibonacci 1
+            label WHILE
+            halt
+            goto WHILE";
+        let main = "\
+            function Main.fibonacci 0
+            push constant 42
+            return";
+        let mut vmb = VmBuilder::new();
+        vmb.add_module("Sys", sys).unwrap();
+        vmb.add_module("Main", main).unwrap();
+        let mut vm = vmb.build();
+        vm.run();
+        println!("{:?}", vm.get_stack());
+        todo!();
     }
 }
