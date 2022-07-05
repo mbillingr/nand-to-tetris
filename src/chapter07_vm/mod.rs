@@ -52,7 +52,7 @@ pub mod tests {
             emu.ram[THIS as usize] = THIS_START_ADDR;
             emu.ram[THAT as usize] = THAT_START_ADDR;
 
-            emu.run();
+            emu.run(usize::MAX);
 
             self.emu = emu;
 

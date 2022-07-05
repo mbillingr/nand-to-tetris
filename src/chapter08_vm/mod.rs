@@ -34,7 +34,17 @@ mod tests {
             let optimized_asm = PeepholeOptimizer::default()
                 .optimize_str(&self.asm_code)
                 .unwrap();
-            println!("{}", optimized_asm);
+
+            let mut nr = 0;
+            for line in optimized_asm.lines() {
+                if line.is_empty() || line.starts_with("(") {
+                    println!("{}", line);
+                } else {
+                    println!("{}  {}", nr, line);
+                    nr += 1;
+                }
+            }
+
             let binary_code = assemble(&optimized_asm).unwrap();
 
             let mut emu = Computer::new(binary_code);
@@ -84,7 +94,11 @@ mod tests {
         }
 
         fn run(&mut self) {
-            self.emu.run()
+            self.emu.run(usize::MAX)
+        }
+
+        fn step(&mut self, n_steps: usize) {
+            self.emu.run(n_steps)
         }
 
         fn get_ram(&self) -> &[u16] {
@@ -342,14 +356,33 @@ mod tests {
     }
 
     #[test]
+    fn call_minimal_function() {
+        let mut vmb = VmBuilder::new();
+        vmb.add_module(
+            "Sys",
+            "\
+            push constant 123
+            call Sys.main 0
+            halt
+
+            function Sys.main 0
+                push constant 42
+                return
+        ",
+        )
+        .unwrap();
+        let mut vm = vmb.build();
+        vm.run();
+        assert_eq!(vm.get_stack(), [123, 42]);
+    }
+
+    #[test]
     fn fibonacci_element() {
         let sys = "\
             function Sys.init 0
             push constant 9
             call Main.fibonacci 1
-            label WHILE
-            halt
-            goto WHILE";
+            halt";
         let main = "\
             function Main.fibonacci 0
             push argument 0
@@ -379,5 +412,74 @@ mod tests {
         vm.run();
         assert_eq!(vm.get_stack().last(), Some(&34));
         assert_eq!(vm.get_sp_ptr(), 262);
+    }
+
+    #[test]
+    fn nested_call() {
+        let mut vmb = VmBuilder::new();
+        vmb.bootstrap();
+        vmb.add_module(
+            "Sys",
+            "\
+            function Sys.init 0
+                push constant 4000
+                pop pointer 0
+                push constant 5000
+                pop pointer 1
+                call Sys.main 0
+                pop temp 1
+                halt
+
+            function Sys.main 5
+                push constant 4001
+                pop pointer 0
+                push constant 5001
+                pop pointer 1
+                push constant 200
+                pop local 1
+                push constant 40
+                pop local 2
+                push constant 6
+                pop local 3
+                push constant 123
+                call Sys.add12 1
+                pop temp 0
+                push local 0
+                push local 1
+                push local 2
+                push local 3
+                push local 4
+                add
+                add
+                add
+                add
+                return
+
+            function Sys.add12 0
+                push constant 4002
+                pop pointer 0
+                push constant 5002
+                pop pointer 1
+                push argument 0
+                push constant 12
+                add
+                return
+        ",
+        )
+        .unwrap();
+        let mut vm = vmb.build();
+        vm.run();
+        assert_eq!(vm.get_sp_ptr(), 261);
+        assert_eq!(vm.get_lcl_ptr(), 261);
+        assert_eq!(vm.get_arg_ptr(), 256);
+        assert_eq!(vm.get_this_ptr(), 4000);
+        assert_eq!(vm.get_that_ptr(), 5000);
+        assert_eq!(vm.get_ram()[5], 135);
+        assert_eq!(vm.get_ram()[6], 246);
+    }
+
+    #[test]
+    fn statics() {
+        todo!()
     }
 }

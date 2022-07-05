@@ -24,7 +24,7 @@ fn main() -> Result<(), String> {
     let mut emu = Computer::new(rom_data);
     emu.set_io(iodev.clone());
 
-    emu.run();
+    emu.run(usize::MAX);
 
     println!("MEMORY DUMP (first few words):");
     println!("ADDR    CH  BIN               HEX     DEC");

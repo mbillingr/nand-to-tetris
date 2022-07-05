@@ -161,12 +161,12 @@ impl CodeGenerator {
     fn gen_return(&mut self) -> String {
         let mut asm = String::new();
         asm += asm!(
+            (R15 = (*(LCL - 5)));
             ((*ARG) = (*(SP - 1)));
             (SP = (ARG + 1));
             (THAT = (*(--LCL)));
             (THIS = (*(--LCL)));
             (ARG = (*(--LCL)));
-            (R15 = (*(LCL - 2)));
             (LCL = (*(--LCL)));
             (goto R15)
         );

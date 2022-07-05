@@ -72,11 +72,11 @@ impl Computer {
         self.ram[addr as usize] = value
     }
 
-    pub fn run(&mut self) {
+    pub fn run(&mut self, max_cycles: usize) {
         let (pc_, mut a, mut d) = self.registers;
         let mut pc = pc_ as usize;
 
-        loop {
+        for _ in 0..max_cycles {
             if self.io.is_disconnected() {
                 break;
             }
@@ -90,6 +90,8 @@ impl Computer {
             }
 
             let op = self.rom[pc];
+
+            //println!("PC: {}, OP: {}", pc, op);
 
             if is_a_instruction(op) {
                 a = op;
@@ -363,23 +365,23 @@ mod tests {
 
         let stop = emu.stop.clone();
         thread::spawn(move || {
-            thread::sleep(Duration::from_millis(10));
+            thread::sleep(Duration::from_millis(100));
             stop.store(true, Ordering::Relaxed);
         });
 
-        emu.run();
+        emu.run(usize::MAX);
     }
 
     #[test]
     fn computer_stops_when_running_out_of_instructions() {
         let mut emu = Computer::new(vec![]);
-        emu.run();
+        emu.run(usize::MAX);
     }
 
     #[test]
     fn set_memory() {
         let mut emu = Computer::new(vec![bus_as_number(&op!(@0)), bus_as_number(&op!(M = (1)))]);
-        emu.run();
+        emu.run(usize::MAX);
         assert_eq!(emu.ram[0], 1);
     }
 
@@ -390,7 +392,7 @@ mod tests {
             bus_as_number(&op!(@0)),
             bus_as_number(&op!(M = (D))),
         ]);
-        emu.run();
+        emu.run(usize::MAX);
         assert_eq!(emu.ram[0], 1);
     }
 
@@ -402,7 +404,7 @@ mod tests {
             bus_as_number(&op!(@0)),
             bus_as_number(&op!(M = (D))),
         ]);
-        emu.run();
+        emu.run(usize::MAX);
         assert_eq!(emu.ram[0], 1);
     }
 
@@ -412,7 +414,7 @@ mod tests {
             bus_as_number(&op!(@0)),
             bus_as_number(&op!(ADM = (1))),
         ]);
-        emu.run();
+        emu.run(usize::MAX);
         assert_eq!(emu.ram[0], 1);
     }
 
@@ -424,7 +426,7 @@ mod tests {
             bus_as_number(&op!(@10)),
             bus_as_number(&op!(M = (D))),
         ]);
-        emu.run();
+        emu.run(usize::MAX);
         assert_eq!(emu.ram[10], 1);
     }
 
@@ -437,7 +439,7 @@ mod tests {
             bus_as_number(&op!(@10)),
             bus_as_number(&op!(M = (D))),
         ]);
-        emu.run();
+        emu.run(usize::MAX);
         assert_eq!(emu.ram[10], 1);
     }
 }
