@@ -99,6 +99,14 @@ impl CodeGenerator {
         Ok(asm_code)
     }
 
+    pub fn gen_bootstrap(&mut self) -> String {
+        let mut asm = "// bootstrap code\n".to_string();
+        asm += asm!((SP = 256));
+        //asm += "@Sys.init\n0;JMP";
+        asm += &self.gen_funcall("Sys.init", 0);
+        asm
+    }
+
     pub fn gen_instruction(&mut self, instruction: Command) -> String {
         match instruction {
             Command::Stack(sc) => self.ch7_gen.gen_instruction(sc),
@@ -162,7 +170,6 @@ impl CodeGenerator {
             (LCL = (*(--LCL)));
             (goto R15)
         );
-        self.current_function = self.ch7_gen.get_module_name().to_string() + "GLOBAL";
         asm
     }
 }

@@ -49,6 +49,10 @@ mod tests {
             VmRunner { emu }
         }
 
+        fn bootstrap(&mut self) {
+            self.asm_code = self.code_gen.gen_bootstrap();
+        }
+
         fn add_module(&mut self, name: &str, vm_code: &str) -> Result<(), String> {
             let vm_instructions = CodeGenerator::parse(vm_code);
             let vm_instructions = CodeGenerator::optimize(vm_instructions);
@@ -341,21 +345,39 @@ mod tests {
     fn fibonacci_element() {
         let sys = "\
             function Sys.init 0
-            push constant 4
+            push constant 9
             call Main.fibonacci 1
             label WHILE
             halt
             goto WHILE";
         let main = "\
             function Main.fibonacci 0
-            push constant 42
+            push argument 0
+            push constant 2
+            lt
+            if-goto IF_TRUE
+            goto IF_FALSE
+            label IF_TRUE
+            push argument 0
+            return
+            label IF_FALSE
+            push argument 0
+            push constant 2
+            sub
+            call Main.fibonacci 1
+            push argument 0
+            push constant 1
+            sub
+            call Main.fibonacci 1
+            add
             return";
         let mut vmb = VmBuilder::new();
-        vmb.add_module("Sys", sys).unwrap();
+        vmb.bootstrap();
         vmb.add_module("Main", main).unwrap();
+        vmb.add_module("Sys", sys).unwrap(); // add sys last to check bootstrap code
         let mut vm = vmb.build();
         vm.run();
-        println!("{:?}", vm.get_stack());
-        todo!();
+        assert_eq!(vm.get_stack().last(), Some(&34));
+        assert_eq!(vm.get_sp_ptr(), 262);
     }
 }
