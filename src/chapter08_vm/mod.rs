@@ -13,8 +13,6 @@ mod tests {
     const ARG_START_ADDR: u16 = 400;
     const THIS_START_ADDR: u16 = 3000;
     const THAT_START_ADDR: u16 = 3010;
-    const TEMP_START_ADDR: u16 = 5;
-    const TEMP_END_ADDR: u16 = 13;
 
     struct VmBuilder {
         code_gen: CodeGenerator,
@@ -30,20 +28,9 @@ mod tests {
         }
 
         fn build(&self) -> VmRunner {
-            println!("{}", self.asm_code);
             let optimized_asm = PeepholeOptimizer::default()
                 .optimize_str(&self.asm_code)
                 .unwrap();
-
-            let mut nr = 0;
-            for line in optimized_asm.lines() {
-                if line.is_empty() || line.starts_with("(") {
-                    println!("{}", line);
-                } else {
-                    println!("{}  {}", nr, line);
-                    nr += 1;
-                }
-            }
 
             let binary_code = assemble(&optimized_asm).unwrap();
 
@@ -80,25 +67,8 @@ mod tests {
     }
 
     impl VmRunner {
-        fn new() -> Self {
-            let mut emu = Computer::new(vec![]);
-
-            // initialize virtual registers
-            emu.ram[SP as usize] = STACK_START_ADDR;
-            emu.ram[LCL as usize] = LOCAL_START_ADDR;
-            emu.ram[ARG as usize] = ARG_START_ADDR;
-            emu.ram[THIS as usize] = THIS_START_ADDR;
-            emu.ram[THAT as usize] = THAT_START_ADDR;
-
-            VmRunner { emu }
-        }
-
         fn run(&mut self) {
             self.emu.run(usize::MAX)
-        }
-
-        fn step(&mut self, n_steps: usize) {
-            self.emu.run(n_steps)
         }
 
         fn get_ram(&self) -> &[u16] {
@@ -124,16 +94,6 @@ mod tests {
             self.emu.set_ram(SP, value)
         }
 
-        fn get_locals(&self) -> &[u16] {
-            let lcl = self.emu.get_ram(LCL) as usize;
-            &self.emu.ram[lcl as usize..]
-        }
-
-        fn set_local(&mut self, offset: u16, value: u16) {
-            let lcl = self.emu.get_ram(LCL);
-            self.emu.set_ram(lcl + offset, value)
-        }
-
         fn get_lcl_ptr(&self) -> u16 {
             self.emu.get_ram(LCL)
         }
@@ -150,23 +110,9 @@ mod tests {
             self.emu.set_ram(ARG, value)
         }
 
-        fn get_arguments(&self) -> &[u16] {
-            &self.emu.ram[ARG_START_ADDR as usize..]
-        }
-
         fn set_argument(&mut self, idx: u16, value: u16) {
             let arg = self.emu.get_ram(ARG);
             self.emu.set_ram(arg + idx, value)
-        }
-
-        fn get_this(&self) -> &[u16] {
-            let this = self.emu.get_ram(THIS) as usize;
-            &self.emu.ram[this..]
-        }
-
-        fn get_that(&self) -> &[u16] {
-            let that = self.emu.get_ram(THAT) as usize;
-            &self.emu.ram[that..]
         }
 
         fn get_this_ptr(&self) -> u16 {
@@ -183,10 +129,6 @@ mod tests {
 
         fn set_that_ptr(&mut self, value: u16) {
             self.emu.set_ram(THAT, value)
-        }
-
-        fn get_temp(&self) -> &[u16] {
-            &self.emu.ram[TEMP_START_ADDR as usize..TEMP_END_ADDR as usize]
         }
     }
 
@@ -279,31 +221,32 @@ mod tests {
         let mut vmb = VmBuilder::new();
         vmb.add_module("JustReturn", "return").unwrap();
         let mut vm = vmb.build();
+
         // set up an artifical stack frame to return from
         // some dummy values
         vm.push(3);
         vm.push(2);
         vm.push(1);
+
         // arguments
         vm.set_arg_ptr(vm.get_sp_ptr());
         vm.push(10);
         vm.push(11);
         vm.push(12);
+
         // saved stats
         vm.push(-1); // return address
         vm.push(1111); // LCL
         vm.push(2222); // ARG
         vm.push(3333); // THIS
         vm.push(4444); // THAT
-                       // locals
+
+        // locals
         vm.set_lcl_ptr(vm.get_sp_ptr());
         vm.push(100);
         vm.push(101);
         vm.push(102);
-        println!("{:?}", vm.get_stack());
         vm.run();
-        println!("{:?}", vm.get_stack());
-        println!("{:?}", &vm.get_ram()[..32]);
 
         assert_eq!(vm.get_stack(), &[3, 2, 1, 102]);
         assert_eq!(vm.get_that_ptr(), 4444);
@@ -480,6 +423,54 @@ mod tests {
 
     #[test]
     fn statics() {
-        todo!()
+        let sys = "\
+            function Sys.init 0
+                push constant 6
+                push constant 8
+                call Class1.set 2
+                pop temp 0
+                push constant 23
+                push constant 15
+                call Class2.set 2
+                pop temp 0
+                call Class1.get 0
+                call Class2.get 0
+                halt";
+        let class1 = "\
+            function Class1.set 0
+                push argument 0
+                pop static 0
+                push argument 1
+                pop static 1
+                push constant 0
+                return
+
+            function Class1.get 0
+                push static 0
+                push static 1
+                sub
+                return";
+        let class2 = "\
+            function Class2.set 0
+                push argument 0
+                pop static 0
+                push argument 1
+                pop static 1
+                push constant 0
+                return
+
+            function Class2.get 0
+                push static 0
+                push static 1
+                sub
+                return";
+        let mut vmb = VmBuilder::new();
+        vmb.bootstrap();
+        vmb.add_module("Class1", class1).unwrap();
+        vmb.add_module("Class2", class2).unwrap();
+        vmb.add_module("Sys", sys).unwrap(); // add sys last to check bootstrap code
+        let mut vm = vmb.build();
+        vm.run();
+        assert!(vm.get_stack().ends_with(&[(-2i16) as u16, 8]));
     }
 }

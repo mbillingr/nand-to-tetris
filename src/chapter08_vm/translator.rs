@@ -1,5 +1,4 @@
 use crate::asm;
-use crate::chapter06_assembler::assembler::{ARG, LCL};
 use crate::chapter06_assembler::parser::Parser;
 use crate::chapter07_vm::optimizer::optimize_pair;
 use crate::chapter07_vm::translator::{CodeGenerator as CodeGen07, POPD};
