@@ -52,7 +52,6 @@ mod tests {
 
         fn add_module(&mut self, name: &str, vm_code: &str) -> Result<(), String> {
             let vm_instructions = CodeGenerator::parse(vm_code);
-            let vm_instructions = CodeGenerator::optimize(vm_instructions);
 
             self.code_gen.set_module_name(name);
 

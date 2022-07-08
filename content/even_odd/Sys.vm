@@ -1,0 +1,4 @@
+function Sys.init 0
+  push constant 42
+  call Even.check 1
+  halt

@@ -1,0 +1,14 @@
+function Even.check 0
+  push argument 0
+  push constant 0
+  eq
+  if-goto IS_EVEN
+    push argument 0
+    push constant 1
+    sub
+    call Odd.check 1
+    not
+    return
+  label IS_EVEN
+    push constant 1
+    return
