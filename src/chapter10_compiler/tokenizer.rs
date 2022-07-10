@@ -1,6 +1,7 @@
+#[derive(Copy, Clone)]
 pub struct JackTokenizer<'s> {
     source: &'s str,
-    current_token: Token<'s>,
+    pub current_token: Token<'s>,
 }
 
 impl<'s> JackTokenizer<'s> {
@@ -94,7 +95,7 @@ fn is_symbol_char(ch: char) -> bool {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum Token<'s> {
+pub enum Token<'s> {
     Invalid(&'s str),
     Keyword(Keyword),
     Symbol(char),
@@ -104,7 +105,7 @@ enum Token<'s> {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-enum Keyword {
+pub enum Keyword {
     Class,
     Constructor,
     Function,
