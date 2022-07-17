@@ -1,4 +1,4 @@
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct JackTokenizer<'s> {
     source: &'s str,
     pub current_token: Token<'s>,
@@ -11,10 +11,19 @@ impl<'s> JackTokenizer<'s> {
             current_token: Token::Invalid(""),
         }
         .skip_whitespace()
+        .advance()
+    }
+
+    /// crate an empty tokenizer
+    pub fn end() -> Self {
+        JackTokenizer {
+            source: "",
+            current_token: Token::Eof,
+        }
     }
 
     pub fn has_more_tokens(&self) -> bool {
-        !self.source.is_empty()
+        true
     }
 
     pub fn advance(self) -> Self {
@@ -34,11 +43,12 @@ impl<'s> JackTokenizer<'s> {
     }
 
     fn extract_token(src: &'s str) -> (Token<'s>, &'s str) {
-        match src.chars().next().unwrap() {
-            '"' => Self::extract_string(src),
-            ch if is_symbol_char(ch) => Self::extract_symbol(src),
-            ch if ch.is_digit(10) => Self::extract_integer(src),
-            _ => Self::extract_identifier_or_keyword(src),
+        match src.chars().next() {
+            Some('"') => Self::extract_string(src),
+            Some(ch) if is_symbol_char(ch) => Self::extract_symbol(src),
+            Some(ch) if ch.is_digit(10) => Self::extract_integer(src),
+            Some(_) => Self::extract_identifier_or_keyword(src),
+            None => (Token::Eof, ""),
         }
     }
 
@@ -102,6 +112,7 @@ pub enum Token<'s> {
     IntegerConstant(u16),
     StringConstant(&'s str),
     Identifier(&'s str),
+    Eof,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -171,9 +182,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn empty_tokenizer_has_no_tokens() {
+    fn empty_tokenizer_has_only_eof_tokens() {
         let lexer = JackTokenizer::new("");
-        assert!(!lexer.has_more_tokens());
+        assert!(lexer.has_more_tokens());
+        assert_eq!(lexer.current_token, Token::Eof);
+        assert_eq!(lexer.advance().current_token, Token::Eof);
     }
 
     #[test]
@@ -185,18 +198,24 @@ mod tests {
     #[test]
     fn whitespace_does_not_count_as_token() {
         let lexer = JackTokenizer::new(" \n ");
-        assert!(!lexer.has_more_tokens());
+        assert_eq!(lexer.current_token, Token::Eof);
     }
 
     #[test]
-    fn advance_sets_current_token() {
-        let lexer = JackTokenizer::new("foo").advance();
+    fn tokenizer_starts_at_first_token() {
+        let lexer = JackTokenizer::new("foo bar");
         assert_eq!(lexer.current_token, Token::Identifier("foo"));
     }
 
     #[test]
+    fn advance_sets_current_token() {
+        let lexer = JackTokenizer::new("foo bar").advance();
+        assert_eq!(lexer.current_token, Token::Identifier("bar"));
+    }
+
+    #[test]
     fn tokens_separate_by_whitespace() {
-        let lexer = JackTokenizer::new("foo  bar").advance();
+        let lexer = JackTokenizer::new("foo  bar");
         assert_eq!(lexer.current_token, Token::Identifier("foo"));
         let lexer = lexer.advance();
         assert_eq!(lexer.current_token, Token::Identifier("bar"));
@@ -204,37 +223,37 @@ mod tests {
 
     #[test]
     fn parse_identifier() {
-        let lexer = JackTokenizer::new(" foo ").advance();
+        let lexer = JackTokenizer::new(" foo ");
         assert_eq!(lexer.current_token, Token::Identifier("foo"));
     }
 
     #[test]
     fn parse_string() {
-        let lexer = JackTokenizer::new(" \"foo\" ").advance();
+        let lexer = JackTokenizer::new(" \"foo\" ");
         assert_eq!(lexer.current_token, Token::StringConstant("foo"));
     }
 
     #[test]
     fn parse_integer() {
-        let lexer = JackTokenizer::new(" 0 ").advance();
+        let lexer = JackTokenizer::new(" 0 ");
         assert_eq!(lexer.current_token, Token::IntegerConstant(0));
     }
 
     #[test]
     fn parse_symbol() {
-        let lexer = JackTokenizer::new("+").advance();
+        let lexer = JackTokenizer::new("+");
         assert_eq!(lexer.current_token, Token::Symbol('+'));
     }
 
     #[test]
     fn parse_keyword() {
-        let lexer = JackTokenizer::new(" class ").advance();
+        let lexer = JackTokenizer::new(" class ");
         assert_eq!(lexer.current_token, Token::Keyword(Keyword::Class));
     }
 
     #[test]
     fn tokens_separate_by_symbol() {
-        let lexer = JackTokenizer::new("x+1").advance();
+        let lexer = JackTokenizer::new("x+1");
         assert_eq!(lexer.current_token, Token::Identifier("x"));
         let lexer = lexer.advance();
         assert_eq!(lexer.current_token, Token::Symbol('+'));
@@ -244,7 +263,7 @@ mod tests {
 
     #[test]
     fn identifier_can_contain_numbers() {
-        let lexer = JackTokenizer::new("x1").advance();
+        let lexer = JackTokenizer::new("x1");
         assert_eq!(lexer.current_token, Token::Identifier("x1"));
     }
 }
