@@ -148,7 +148,7 @@ impl<'s> Token<'s> {
 }
 
 impl Keyword {
-    fn try_from_str(s: &str) -> Option<Self> {
+    pub fn try_from_str(s: &str) -> Option<Self> {
         match s {
             "class" => Some(Keyword::Class),
             "constructor" => Some(Keyword::Constructor),
