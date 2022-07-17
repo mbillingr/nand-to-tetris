@@ -8,7 +8,7 @@ impl<'s> JackTokenizer<'s> {
     pub fn new(source: &'s str) -> Self {
         JackTokenizer {
             source,
-            current_token: Token::Invalid(""),
+            current_token: Token::Eof,
         }
         .skip_whitespace()
         .advance()
@@ -106,7 +106,6 @@ fn is_symbol_char(ch: char) -> bool {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Token<'s> {
-    Invalid(&'s str),
     Keyword(Keyword),
     Symbol(char),
     IntegerConstant(u16),
