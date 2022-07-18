@@ -117,9 +117,9 @@ impl<T: Parser> Parser for ParserWrapper<T> {
 struct Either<A, B>(A, B);
 
 impl<A, B> Parser for Either<A, B>
-where
-    A: Parser,
-    B: Parser<Output = A::Output>,
+    where
+        A: Parser,
+        B: Parser<Output = A::Output>,
 {
     type Output = B::Output;
     fn parse<'s>(&self, lexer: JackTokenizer<'s>) -> ParseResult<'s, Self::Output> {
@@ -175,6 +175,10 @@ macro_rules! parser {
         }
     };
 
+    (@parse $lexer:expr, ( ($var:ident @ $first:tt) $($rest:tt)* ) ) => {
+        parser!(@parse $lexer, ($var @ $first $($rest)*))
+    };
+
     (@parse $lexer:expr, ( $first:tt $($rest:tt)* ) ) => {
         match parser!(@parse $lexer, $first) {
             Ok((_, lx)) => { parser!(@parse lx, ( $($rest)* ) ) }
@@ -203,61 +207,13 @@ parser! {
 }
 
 parser! {
-    //parse_let_statement = "let" (var @ parse_var_name) '=' (val @ parse_expression) ';' => ParseTree::let_(var, None, val)
-    parse_let_statement = ("let" var @ identifier '=' val @ expression ';' => ParseTree::let_(var, None, val))
+    parse_let_statement = ("let" (var @ identifier) '=' (val @ expression) ';' => ParseTree::let_(var, None, val))
+                        | ("let" (var @ identifier) '[' (idx @ expression) ']' '=' (val @ expression) ';' => ParseTree::let_(var, Some(idx), val))
 }
 
-fn parse_a(lexer: JackTokenizer) -> ParseResult {
-    unimplemented!()
-}
-fn parse_b(lexer: JackTokenizer) -> ParseResult {
-    unimplemented!()
-}
-
-fn _parse_let_statement(lexer: JackTokenizer) -> ParseResult {
-    let original_lexer = lexer;
-
-    let mut lexer = consume_keyword(lexer, Keyword::Let)?;
-
-    let varname = if let Token::Identifier(name) = lexer.current_token {
-        lexer = lexer.advance();
-        name.to_string()
-    } else {
-        return Err(original_lexer);
-    };
-
-    let array_index = match lexer.current_token {
-        Token::Symbol('[') => {
-            let lx = consume_symbol(lexer, '[')?;
-            let (index, lx) = expression(lexer)?;
-            let lx = consume_symbol(lexer, ']')?;
-            lexer = lx;
-            Some(index)
-        }
-        _ => None,
-    };
-
-    let lexer = consume_symbol(lexer, '=')?;
-
-    let (value, lexer) = expression(lexer)?;
-
-    let lexer = consume_symbol(lexer, ';')?;
-
-    Ok((ParseTree::let_(varname, array_index, value), lexer))
-}
-
-fn expression(lexer: JackTokenizer) -> ParseResult {
-    let (mut val, mut lexer) = term(lexer)?;
-    loop {
-        match lexer.current_token {
-            Token::Symbol(op @ ('+' | '-' | '*' | '/' | '&' | '|' | '<' | '>' | '=')) => {
-                let (rhs, lx) = term(lexer.advance())?;
-                val = ParseTree::binary_op(op, val, rhs);
-                lexer = lx;
-            }
-            _ => return Ok((val, lexer)),
-        }
-    }
+parser! {
+    expression = (a@term op@parse_binary_op b@expression => ParseTree::binary_op(op, a, b))
+               | term
 }
 
 parser! {
@@ -281,6 +237,10 @@ parser! {
 
 parser! {
     parse_unary_op: char = '-' | '~'
+}
+
+parser! {
+    parse_binary_op: char = '+' | '-' | '*' | '/' | '&' | '|' | '<' | '>' | '='
 }
 
 fn expression_list(mut lexer: JackTokenizer) -> ParseResult<Vec<ParseTree>> {
@@ -488,16 +448,10 @@ mod tests {
 
     #[test]
     fn parse_operators_ignore_precedence() {
+        // this is the opposite of how it works in the book, where it would parse as ((2 - 3) * 4) + 5
         assert_eq!(
-            expression(JackTokenizer::new("2 + 3 * 4")),
-            Ok((
-                ParseTree::binary_op(
-                    '*',
-                    ParseTree::binary_op('+', ParseTree::Integer(2), ParseTree::Integer(3)),
-                    ParseTree::Integer(4)
-                ),
-                JackTokenizer::end()
-            ))
+            expression(JackTokenizer::new("2 - 3 * 4 + 5")),
+            expression(JackTokenizer::new("2 - (3 * (4 + 5))")),
         );
     }
 
@@ -522,6 +476,18 @@ mod tests {
             parse_statement(JackTokenizer::new("let foo = bar;")),
             Ok((
                 ParseTree::let_("foo", None, ParseTree::var_name("bar")),
+                JackTokenizer::end()
+            ))
+        );
+
+        assert_eq!(
+            parse_statement(JackTokenizer::new("let foo[0] = bar;")),
+            Ok((
+                ParseTree::let_(
+                    "foo",
+                    Some(ParseTree::Integer(0)),
+                    ParseTree::var_name("bar")
+                ),
                 JackTokenizer::end()
             ))
         );
