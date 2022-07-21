@@ -7,24 +7,11 @@ type ParseResult<'s, T = ParseTree> = Result<(T, JackTokenizer<'s>), JackTokeniz
 
 #[derive(Debug, Eq, PartialEq)]
 enum ParseTree {
-    True,
-    False,
-    Null,
-    This,
-    Integer(u16),
-    String(String),
-    VarName(String),
-    Type(Type),
-    UnaryOp(char, Box<ParseTree>),
-    BinaryOp(char, Box<ParseTree>, Box<ParseTree>),
-    ArrayIndex(String, Box<ParseTree>),
-    FunctionCall(String, Vec<ParseTree>),
-    MethodCall(String, String, Vec<ParseTree>),
-    Let(String, Option<Box<ParseTree>>, Box<ParseTree>),
-    If(Box<ParseTree>, Vec<ParseTree>, Vec<ParseTree>),
-    While(Box<ParseTree>, Vec<ParseTree>),
-    Do(Box<ParseTree>),
-    Return(Option<Box<ParseTree>>),
+    Let(String, Option<Expression>, Expression),
+    If(Expression, Vec<ParseTree>, Vec<ParseTree>),
+    While(Expression, Vec<ParseTree>),
+    Do(SubroutineCall),
+    Return(Option<Expression>),
     VarDec(Type, Vec<String>),
 }
 
@@ -36,65 +23,134 @@ enum Type {
     Class(String),
 }
 
-impl ParseTree {
+#[derive(Debug, Eq, PartialEq)]
+enum Expression {
+    Term(Term),
+    Op(Term, char, Box<Expression>),
+}
+
+impl Expression {
+    fn integer(x: u16) -> Self {
+        Self::Term(Term::integer(x))
+    }
+
+    fn term(x: impl Into<Term>) -> Self {
+        match x.into() {
+            Term::Expression(x) => *x,
+            t => Expression::Term(t),
+        }
+    }
+
+    fn op(op: char, a: impl Into<Term>, b: impl Into<Box<Expression>>) -> Self {
+        Self::Op(a.into(), op, b.into())
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum Term {
+    Null,
+    True,
+    False,
+    This,
+    Integer(u16),
+    String(String),
+    Variable(String),
+    ArrayIndex(String, Box<Expression>),
+    Expression(Box<Expression>),
+    Neg(Box<Term>),
+    Not(Box<Term>),
+    Call(SubroutineCall),
+}
+
+impl Term {
+    fn integer(x: u16) -> Self {
+        Self::Integer(x)
+    }
+
     fn string(s: impl ToString) -> Self {
-        ParseTree::String(s.to_string())
+        Self::String(s.to_string())
     }
 
-    fn var_name(s: impl ToString) -> Self {
-        ParseTree::VarName(s.to_string())
+    fn variable(name: impl ToString) -> Self {
+        Self::Variable(name.to_string())
     }
 
-    fn not(pt: ParseTree) -> Self {
-        ParseTree::UnaryOp('~', Box::new(pt))
+    fn array_index(name: impl ToString, idx: Expression) -> Self {
+        Self::ArrayIndex(name.to_string(), Box::new(idx))
     }
 
-    fn neg(pt: ParseTree) -> Self {
-        ParseTree::UnaryOp('-', Box::new(pt))
+    fn expression(x: impl Into<Expression>) -> Self {
+        match x.into() {
+            Expression::Term(t) => t,
+            x => Term::Expression(Box::new(x)),
+        }
     }
 
-    fn array_index(arr: impl ToString, idx: ParseTree) -> Self {
-        ParseTree::ArrayIndex(arr.to_string(), Box::new(idx))
+    fn neg(x: Term) -> Self {
+        Self::Neg(Box::new(x))
     }
 
-    fn unary_op(op: char, x: ParseTree) -> Self {
-        ParseTree::UnaryOp(op, Box::new(x))
+    fn not(x: Term) -> Self {
+        Self::Not(Box::new(x))
+    }
+}
+
+impl From<Term> for Box<Expression> {
+    fn from(t: Term) -> Self {
+        match t {
+            Term::Expression(x) => x,
+            _ => Box::new(Expression::Term(t)),
+        }
+    }
+}
+
+impl From<Term> for Expression {
+    fn from(t: Term) -> Self {
+        Self::term(t)
+    }
+}
+
+impl From<Expression> for Term {
+    fn from(x: Expression) -> Self {
+        Self::expression(x)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum SubroutineCall {
+    FunctionCall(String, Vec<Expression>),
+    MethodCall(String, String, Vec<Expression>),
+}
+
+impl SubroutineCall {
+    fn function_call(func: impl ToString, args: Vec<Expression>) -> Self {
+        Self::FunctionCall(func.to_string(), args)
     }
 
-    fn binary_op(op: char, a: ParseTree, b: ParseTree) -> Self {
-        ParseTree::BinaryOp(op, Box::new(a), Box::new(b))
+    fn method_call(obj: impl ToString, func: impl ToString, args: Vec<Expression>) -> Self {
+        Self::MethodCall(obj.to_string(), func.to_string(), args)
+    }
+}
+
+impl ParseTree {
+    fn let_(
+        varname: impl ToString,
+        array_index: Option<Expression>,
+        value: impl Into<Expression>,
+    ) -> Self {
+        ParseTree::Let(varname.to_string(), array_index, value.into())
     }
 
-    fn function_call(func: impl ToString, args: Vec<ParseTree>) -> Self {
-        ParseTree::FunctionCall(func.to_string(), args)
+    fn if_(
+        condition: impl Into<Expression>,
+        consequence: Vec<ParseTree>,
+        alternative: Vec<ParseTree>,
+    ) -> Self {
+        ParseTree::If(condition.into(), consequence, alternative)
     }
 
-    fn method_call(obj: impl ToString, func: impl ToString, args: Vec<ParseTree>) -> Self {
-        ParseTree::MethodCall(obj.to_string(), func.to_string(), args)
-    }
-
-    fn let_(varname: impl ToString, array_index: Option<ParseTree>, value: ParseTree) -> Self {
-        ParseTree::Let(
-            varname.to_string(),
-            array_index.map(Box::new),
-            Box::new(value),
-        )
-    }
-
-    fn if_(condition: ParseTree, consequence: Vec<ParseTree>, alternative: Vec<ParseTree>) -> Self {
-        ParseTree::If(Box::new(condition), consequence, alternative)
-    }
-
-    fn while_(condition: ParseTree, body: Vec<ParseTree>) -> Self {
-        ParseTree::While(Box::new(condition), body)
-    }
-
-    fn do_(func: ParseTree) -> Self {
-        ParseTree::Do(Box::new(func))
-    }
-
-    fn return_(value: Option<ParseTree>) -> Self {
-        ParseTree::Return(value.map(Box::new))
+    fn while_(condition: impl Into<Expression>, body: Vec<ParseTree>) -> Self {
+        ParseTree::While(condition.into(), body)
     }
 
     fn vardec(typ: Type, vars: Vec<&str>) -> Self {
@@ -281,40 +337,41 @@ parser! {
 }
 
 parser! {
-    do_statement = ("do" fun @ subroutine_call ';' => ParseTree::do_(fun))
+    do_statement = ("do" fun @ subroutine_call ';' => ParseTree::Do(fun))
 }
 
 parser! {
-    return_statement = ("return" ';' => ParseTree::return_(None))
-                     | ("return" val @ expression ';' => ParseTree::return_(Some(val)))
+    return_statement = ("return" ';' => ParseTree::Return(None))
+                     | ("return" val @ expression ';' => ParseTree::Return(Some(val)))
 }
 
 parser! {
-    expression = (a@term op@parse_binary_op b@expression => ParseTree::binary_op(op, a, b))
-               | term
+    expression: Expression = (a@term op@parse_binary_op b@expression => Expression::op(op, a, Box::new(b)))
+                           | (x@term => Expression::term(x))
 }
 
 parser! {
-    term = integer_constant
-         | string_constant
-         | keyword_constant
-         | subroutine_call
-         | (var @ identifier '[' idx @ expression ']' => ParseTree::array_index(var, idx))
-         | (var @ identifier => ParseTree::var_name(var))
-         | ('(' x @ expression ')' => x)
-         | (op @ parse_unary_op val @ term => ParseTree::unary_op(op, val))
+    term: Term = (x @ integer_constant => Term::Integer(x))
+               | (s @ string_constant => Term::String(s))
+               | keyword_constant
+               | (c @ subroutine_call => Term::Call(c))
+               | (var @ identifier '[' idx @ expression ']' => Term::array_index(var, idx))
+               | (var @ identifier => Term::variable(var))
+               | ('(' x @ expression ')' => Term::expression(x))
+               | ('-' val @ term => Term::neg(val))
+               | ('~' val @ term => Term::not(val))
 }
 
 parser! {
-    subroutine_call = (obj @ identifier '.' fun @ identifier args @ expression_list => ParseTree::method_call(obj, fun, args))
-                    | (fun @ identifier args @ expression_list => ParseTree::function_call(fun, args))
+    subroutine_call : SubroutineCall = (obj @ identifier '.' fun @ identifier args @ expression_list => SubroutineCall::method_call(obj, fun, args))
+                                     | (fun @ identifier args @ expression_list => SubroutineCall::function_call(fun, args))
 }
 
 parser! {
-    keyword_constant = ("true" => ParseTree::True)
-                     | ("false" => ParseTree::False)
-                     | ("null" => ParseTree::Null)
-                     | ("this" => ParseTree::This)
+    keyword_constant : Term = ("true" => Term::True)
+                            | ("false" => Term::False)
+                            | ("null" => Term::Null)
+                            | ("this" => Term::This)
 }
 
 parser! {
@@ -325,7 +382,7 @@ parser! {
     parse_binary_op: char = '+' | '-' | '*' | '/' | '&' | '|' | '<' | '>' | '='
 }
 
-fn expression_list(mut lexer: JackTokenizer) -> ParseResult<Vec<ParseTree>> {
+fn expression_list(mut lexer: JackTokenizer) -> ParseResult<Vec<Expression>> {
     lexer = consume_symbol(lexer, '(')?;
     let mut items = vec![];
     loop {
@@ -350,16 +407,16 @@ fn identifier<'s>(lexer: JackTokenizer<'s>) -> ParseResult<&'s str> {
     }
 }
 
-fn integer_constant(lexer: JackTokenizer) -> ParseResult {
+fn integer_constant(lexer: JackTokenizer) -> ParseResult<u16> {
     match lexer.current_token {
-        Token::IntegerConstant(x) => Ok((ParseTree::Integer(x), lexer.advance())),
+        Token::IntegerConstant(x) => Ok((x, lexer.advance())),
         _ => Err(lexer),
     }
 }
 
-fn string_constant(lexer: JackTokenizer) -> ParseResult {
+fn string_constant(lexer: JackTokenizer) -> ParseResult<String> {
     match lexer.current_token {
-        Token::StringConstant(x) => Ok((ParseTree::String(x.to_string()), lexer.advance())),
+        Token::StringConstant(x) => Ok((x.to_string(), lexer.advance())),
         _ => Err(lexer),
     }
 }
@@ -396,7 +453,7 @@ mod tests {
     fn parse_term_integer() {
         assert_eq!(
             term(JackTokenizer::new("42")),
-            Ok((ParseTree::Integer(42), JackTokenizer::end()))
+            Ok((Term::Integer(42), JackTokenizer::end()))
         );
     }
 
@@ -404,7 +461,7 @@ mod tests {
     fn parse_term_string() {
         assert_eq!(
             term(JackTokenizer::new("\"0\"")),
-            Ok((ParseTree::string("0"), JackTokenizer::end()))
+            Ok((Term::string("0"), JackTokenizer::end()))
         );
     }
 
@@ -412,19 +469,19 @@ mod tests {
     fn parse_term_keyword_constants() {
         assert_eq!(
             term(JackTokenizer::new("true")),
-            Ok((ParseTree::True, JackTokenizer::end()))
+            Ok((Term::True, JackTokenizer::end()))
         );
         assert_eq!(
             term(JackTokenizer::new("false")),
-            Ok((ParseTree::False, JackTokenizer::end()))
+            Ok((Term::False, JackTokenizer::end()))
         );
         assert_eq!(
             term(JackTokenizer::new("null")),
-            Ok((ParseTree::Null, JackTokenizer::end()))
+            Ok((Term::Null, JackTokenizer::end()))
         );
         assert_eq!(
             term(JackTokenizer::new("this")),
-            Ok((ParseTree::This, JackTokenizer::end()))
+            Ok((Term::This, JackTokenizer::end()))
         );
     }
 
@@ -432,7 +489,7 @@ mod tests {
     fn parse_term_variable() {
         assert_eq!(
             term(JackTokenizer::new("xyz")),
-            Ok((ParseTree::var_name("xyz"), JackTokenizer::end()))
+            Ok((Term::variable("xyz"), JackTokenizer::end()))
         );
     }
 
@@ -441,7 +498,7 @@ mod tests {
         assert_eq!(
             term(JackTokenizer::new("x[a]")),
             Ok((
-                ParseTree::array_index("x", ParseTree::var_name("a")),
+                Term::array_index("x", Expression::Term(Term::variable("a"))),
                 JackTokenizer::end()
             ))
         );
@@ -459,28 +516,28 @@ mod tests {
     fn parse_term_unary() {
         assert_eq!(
             term(JackTokenizer::new("~true")),
-            Ok((ParseTree::not(ParseTree::True), JackTokenizer::end()))
+            Ok((Term::not(Term::True), JackTokenizer::end()))
         );
         assert_eq!(
             term(JackTokenizer::new("-1")),
-            Ok((ParseTree::neg(ParseTree::Integer(1)), JackTokenizer::end()))
+            Ok((Term::neg(Term::Integer(1)), JackTokenizer::end()))
         );
     }
 
     #[test]
-    fn parse_term_subroutine_call() {
+    fn parse_subroutine_call() {
         assert_eq!(
-            term(JackTokenizer::new("foo()")),
+            subroutine_call(JackTokenizer::new("foo()")),
             Ok((
-                ParseTree::FunctionCall("foo".to_string(), vec![]),
+                SubroutineCall::FunctionCall("foo".to_string(), vec![]),
                 JackTokenizer::end()
             ))
         );
 
         assert_eq!(
-            term(JackTokenizer::new("foo.bar()")),
+            subroutine_call(JackTokenizer::new("foo.bar()")),
             Ok((
-                ParseTree::MethodCall("foo".to_string(), "bar".to_string(), vec![]),
+                SubroutineCall::MethodCall("foo".to_string(), "bar".to_string(), vec![]),
                 JackTokenizer::end()
             ))
         );
@@ -494,12 +551,12 @@ mod tests {
         );
         assert_eq!(
             expression_list(JackTokenizer::new("(1)")),
-            Ok((vec![ParseTree::Integer(1)], JackTokenizer::end()))
+            Ok((vec![Expression::integer(1)], JackTokenizer::end()))
         );
         assert_eq!(
             expression_list(JackTokenizer::new("(1,2)")),
             Ok((
-                vec![ParseTree::Integer(1), ParseTree::Integer(2)],
+                vec![Expression::integer(1), Expression::integer(2)],
                 JackTokenizer::end()
             ))
         );
@@ -513,7 +570,7 @@ mod tests {
     fn parse_unary_expression() {
         assert_eq!(
             expression(JackTokenizer::new("42")),
-            Ok((ParseTree::Integer(42), JackTokenizer::end()))
+            Ok((Expression::integer(42), JackTokenizer::end()))
         );
     }
 
@@ -522,7 +579,7 @@ mod tests {
         assert_eq!(
             expression(JackTokenizer::new("1 + 2")),
             Ok((
-                ParseTree::binary_op('+', ParseTree::Integer(1), ParseTree::Integer(2)),
+                Expression::op('+', Term::Integer(1), Expression::integer(2)),
                 JackTokenizer::end()
             ))
         );
@@ -542,10 +599,10 @@ mod tests {
         assert_eq!(
             expression(JackTokenizer::new("(2 + 3) * (4 - 5)")),
             Ok((
-                ParseTree::binary_op(
+                Expression::op(
                     '*',
-                    ParseTree::binary_op('+', ParseTree::Integer(2), ParseTree::Integer(3)),
-                    ParseTree::binary_op('-', ParseTree::Integer(4), ParseTree::Integer(5)),
+                    Expression::op('+', Term::integer(2), Expression::integer(3)),
+                    Expression::op('-', Term::integer(4), Expression::integer(5)),
                 ),
                 JackTokenizer::end()
             ))
@@ -557,7 +614,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("let foo = bar;")),
             Ok((
-                ParseTree::let_("foo", None, ParseTree::var_name("bar")),
+                ParseTree::let_("foo", None, Term::variable("bar")),
                 JackTokenizer::end()
             ))
         );
@@ -565,11 +622,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("let foo[0] = bar;")),
             Ok((
-                ParseTree::let_(
-                    "foo",
-                    Some(ParseTree::Integer(0)),
-                    ParseTree::var_name("bar")
-                ),
+                ParseTree::let_("foo", Some(Expression::integer(0)), Term::variable("bar")),
                 JackTokenizer::end()
             ))
         );
@@ -585,7 +638,7 @@ mod tests {
         assert_eq!(
             statements(JackTokenizer::new("let x = 0;")),
             Ok((
-                vec![ParseTree::let_("x", None, ParseTree::Integer(0))],
+                vec![ParseTree::let_("x", None, Term::Integer(0))],
                 JackTokenizer::end()
             ))
         );
@@ -594,8 +647,8 @@ mod tests {
             statements(JackTokenizer::new("let x = 0;let y=1;")),
             Ok((
                 vec![
-                    ParseTree::let_("x", None, ParseTree::Integer(0)),
-                    ParseTree::let_("y", None, ParseTree::Integer(1))
+                    ParseTree::let_("x", None, Term::Integer(0)),
+                    ParseTree::let_("y", None, Term::Integer(1))
                 ],
                 JackTokenizer::end()
             ))
@@ -607,7 +660,7 @@ mod tests {
         assert_eq!(
             statements(JackTokenizer::new("let x=0; let y")),
             Ok((
-                vec![ParseTree::let_("x", None, ParseTree::Integer(0))],
+                vec![ParseTree::let_("x", None, Term::Integer(0))],
                 JackTokenizer::new("let y")
             ))
         );
@@ -618,7 +671,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("if (true) {} else {}")),
             Ok((
-                ParseTree::if_(ParseTree::True, vec![], vec![]),
+                ParseTree::if_(Term::True, vec![], vec![]),
                 JackTokenizer::end()
             ))
         );
@@ -626,7 +679,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("if (true) {}")),
             Ok((
-                ParseTree::if_(ParseTree::True, vec![], vec![]),
+                ParseTree::if_(Term::True, vec![], vec![]),
                 JackTokenizer::end()
             ))
         );
@@ -636,10 +689,7 @@ mod tests {
     fn parse_while_statement() {
         assert_eq!(
             statement(JackTokenizer::new("while (true) {}")),
-            Ok((
-                ParseTree::while_(ParseTree::True, vec![],),
-                JackTokenizer::end()
-            ))
+            Ok((ParseTree::while_(Term::True, vec![],), JackTokenizer::end()))
         );
     }
 
@@ -648,7 +698,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("do foo();")),
             Ok((
-                ParseTree::do_(ParseTree::function_call("foo", vec![])),
+                ParseTree::Do(SubroutineCall::function_call("foo", vec![])),
                 JackTokenizer::end()
             ))
         );
@@ -658,13 +708,13 @@ mod tests {
     fn parse_return_statement() {
         assert_eq!(
             statement(JackTokenizer::new("return;")),
-            Ok((ParseTree::return_(None), JackTokenizer::end()))
+            Ok((ParseTree::Return(None), JackTokenizer::end()))
         );
 
         assert_eq!(
             statement(JackTokenizer::new("return null;")),
             Ok((
-                ParseTree::return_(Some(ParseTree::Null)),
+                ParseTree::Return(Some(Term::Null.into())),
                 JackTokenizer::end()
             ))
         );
