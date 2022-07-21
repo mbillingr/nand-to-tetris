@@ -26,6 +26,7 @@ enum ParseTree {
     While(Box<ParseTree>, Box<ParseTree>),
     Do(Box<ParseTree>),
     Return(Option<Box<ParseTree>>),
+    VarDec(Type, Vec<String>),
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -103,6 +104,10 @@ impl ParseTree {
 
     fn return_(value: Option<ParseTree>) -> Self {
         ParseTree::Return(value.map(Box::new))
+    }
+
+    fn vardec(typ: Type, vars: Vec<&str>) -> Self {
+        ParseTree::VarDec(typ, vars.into_iter().map(str::to_string).collect())
     }
 }
 
@@ -202,6 +207,13 @@ macro_rules! parser {
         result
     }};
 
+    (@parse $lexer:expr, (+ $($p:tt)+) ) => {
+        match parser!(@parse $lexer, (* $($p)+)) {
+            Ok((items, lexer)) if items.len() >= 1 => Ok((items, lexer)),
+            _ => Err($lexer)
+        }
+    };
+
     (@parse $lexer:expr, (=> $res:expr) ) => {
         Ok(($res, $lexer))
     };
@@ -241,10 +253,18 @@ macro_rules! parser {
 }
 
 parser! {
-    type_ = ("int" => ParseTree::Type(Type::Int))
-          | ("char" => ParseTree::Type(Type::Char))
-          | ("bool" => ParseTree::Type(Type::Bool))
-          | (cls @ identifier => ParseTree::Type(Type::Class(cls.to_string())))
+    type_: Type = ("int" => Type::Int)
+                | ("char" => Type::Char)
+                | ("bool" => Type::Bool)
+                | (cls @ identifier => Type::Class(cls.to_string()))
+}
+
+parser! {
+    vardec = ("var" (typ @ type_) (fst @ identifier) (vars @ (* ',' identifier)) ';' => {
+                let mut vars=vars;
+                vars.insert(0, fst);
+                ParseTree::vardec(typ, vars)
+             } )
 }
 
 fn statements(mut lexer: JackTokenizer) -> ParseResult<ParseTree> {
@@ -677,23 +697,39 @@ mod tests {
     fn parse_type() {
         assert_eq!(
             type_(JackTokenizer::new("int")),
-            Ok((ParseTree::Type(Type::Int), JackTokenizer::end()))
+            Ok((Type::Int, JackTokenizer::end()))
         );
 
         assert_eq!(
             type_(JackTokenizer::new("char")),
-            Ok((ParseTree::Type(Type::Char), JackTokenizer::end()))
+            Ok((Type::Char, JackTokenizer::end()))
         );
 
         assert_eq!(
             type_(JackTokenizer::new("bool")),
-            Ok((ParseTree::Type(Type::Bool), JackTokenizer::end()))
+            Ok((Type::Bool, JackTokenizer::end()))
         );
 
         assert_eq!(
             type_(JackTokenizer::new("Custom")),
+            Ok((Type::Class("Custom".to_string()), JackTokenizer::end()))
+        );
+    }
+
+    #[test]
+    fn parse_vardec() {
+        assert_eq!(
+            vardec(JackTokenizer::new("var int x;")),
             Ok((
-                ParseTree::Type(Type::Class("Custom".to_string())),
+                ParseTree::vardec(Type::Int, vec!["x"]),
+                JackTokenizer::end()
+            ))
+        );
+
+        assert_eq!(
+            vardec(JackTokenizer::new("var int x, y, z;")),
+            Ok((
+                ParseTree::vardec(Type::Int, vec!["x", "y", "z"]),
                 JackTokenizer::end()
             ))
         );
