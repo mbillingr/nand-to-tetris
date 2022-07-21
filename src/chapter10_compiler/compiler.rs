@@ -20,10 +20,9 @@ enum ParseTree {
     ArrayIndex(String, Box<ParseTree>),
     FunctionCall(String, Vec<ParseTree>),
     MethodCall(String, String, Vec<ParseTree>),
-    Statements(Vec<ParseTree>),
     Let(String, Option<Box<ParseTree>>, Box<ParseTree>),
-    If(Box<ParseTree>, Box<ParseTree>, Option<Box<ParseTree>>),
-    While(Box<ParseTree>, Box<ParseTree>),
+    If(Box<ParseTree>, Vec<ParseTree>, Vec<ParseTree>),
+    While(Box<ParseTree>, Vec<ParseTree>),
     Do(Box<ParseTree>),
     Return(Option<Box<ParseTree>>),
     VarDec(Type, Vec<String>),
@@ -74,10 +73,6 @@ impl ParseTree {
         ParseTree::MethodCall(obj.to_string(), func.to_string(), args)
     }
 
-    fn statements(stmts: Vec<ParseTree>) -> Self {
-        ParseTree::Statements(stmts)
-    }
-
     fn let_(varname: impl ToString, array_index: Option<ParseTree>, value: ParseTree) -> Self {
         ParseTree::Let(
             varname.to_string(),
@@ -86,16 +81,12 @@ impl ParseTree {
         )
     }
 
-    fn if_(condition: ParseTree, consequence: ParseTree, alternative: Option<ParseTree>) -> Self {
-        ParseTree::If(
-            Box::new(condition),
-            Box::new(consequence),
-            alternative.map(Box::new),
-        )
+    fn if_(condition: ParseTree, consequence: Vec<ParseTree>, alternative: Vec<ParseTree>) -> Self {
+        ParseTree::If(Box::new(condition), consequence, alternative)
     }
 
-    fn while_(condition: ParseTree, body: ParseTree) -> Self {
-        ParseTree::While(Box::new(condition), Box::new(body))
+    fn while_(condition: ParseTree, body: Vec<ParseTree>) -> Self {
+        ParseTree::While(Box::new(condition), body)
     }
 
     fn do_(func: ParseTree) -> Self {
@@ -267,18 +258,8 @@ parser! {
              } )
 }
 
-fn statements(mut lexer: JackTokenizer) -> ParseResult<ParseTree> {
-    let mut stmts = vec![];
-    loop {
-        match statement(lexer) {
-            Ok((stmt, lx)) => {
-                lexer = lx;
-                stmts.push(stmt);
-            }
-            Err(_) => break,
-        }
-    }
-    Ok((ParseTree::statements(stmts), lexer))
+parser! {
+    statements: Vec<ParseTree> = (* statement)
 }
 
 parser! {
@@ -291,8 +272,8 @@ parser! {
 }
 
 parser! {
-    if_statement = ("if" '(' cnd @ expression ')' '{' thn @ statements '}' "else" '{' alt @ statements '}' => ParseTree::if_(cnd, thn, Some(alt)))
-                 | ("if" '(' cnd @ expression ')' '{' thn @ statements '}' => ParseTree::if_(cnd, thn, None))
+    if_statement = ("if" '(' cnd @ expression ')' '{' thn @ statements '}' "else" '{' alt @ statements '}' => ParseTree::if_(cnd, thn, alt))
+                 | ("if" '(' cnd @ expression ')' '{' thn @ statements '}' => ParseTree::if_(cnd, thn, vec![]))
 }
 
 parser! {
@@ -598,13 +579,13 @@ mod tests {
     fn parse_statement_sequence() {
         assert_eq!(
             statements(JackTokenizer::new("")),
-            Ok((ParseTree::statements(vec![]), JackTokenizer::end()))
+            Ok((vec![], JackTokenizer::end()))
         );
 
         assert_eq!(
             statements(JackTokenizer::new("let x = 0;")),
             Ok((
-                ParseTree::statements(vec![ParseTree::let_("x", None, ParseTree::Integer(0))]),
+                vec![ParseTree::let_("x", None, ParseTree::Integer(0))],
                 JackTokenizer::end()
             ))
         );
@@ -612,10 +593,10 @@ mod tests {
         assert_eq!(
             statements(JackTokenizer::new("let x = 0;let y=1;")),
             Ok((
-                ParseTree::statements(vec![
+                vec![
                     ParseTree::let_("x", None, ParseTree::Integer(0)),
                     ParseTree::let_("y", None, ParseTree::Integer(1))
-                ]),
+                ],
                 JackTokenizer::end()
             ))
         );
@@ -626,7 +607,7 @@ mod tests {
         assert_eq!(
             statements(JackTokenizer::new("let x=0; let y")),
             Ok((
-                ParseTree::statements(vec![ParseTree::let_("x", None, ParseTree::Integer(0))]),
+                vec![ParseTree::let_("x", None, ParseTree::Integer(0))],
                 JackTokenizer::new("let y")
             ))
         );
@@ -637,11 +618,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("if (true) {} else {}")),
             Ok((
-                ParseTree::if_(
-                    ParseTree::True,
-                    ParseTree::statements(vec![]),
-                    Some(ParseTree::statements(vec![]))
-                ),
+                ParseTree::if_(ParseTree::True, vec![], vec![]),
                 JackTokenizer::end()
             ))
         );
@@ -649,7 +626,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("if (true) {}")),
             Ok((
-                ParseTree::if_(ParseTree::True, ParseTree::statements(vec![]), None),
+                ParseTree::if_(ParseTree::True, vec![], vec![]),
                 JackTokenizer::end()
             ))
         );
@@ -660,7 +637,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("while (true) {}")),
             Ok((
-                ParseTree::while_(ParseTree::True, ParseTree::statements(vec![]),),
+                ParseTree::while_(ParseTree::True, vec![],),
                 JackTokenizer::end()
             ))
         );
