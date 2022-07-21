@@ -24,6 +24,7 @@ enum ParseTree {
     If(Box<ParseTree>, Box<ParseTree>, Option<Box<ParseTree>>),
     While(Box<ParseTree>, Box<ParseTree>),
     Do(Box<ParseTree>),
+    Return(Option<Box<ParseTree>>),
 }
 
 impl ParseTree {
@@ -89,6 +90,10 @@ impl ParseTree {
 
     fn do_(func: ParseTree) -> Self {
         ParseTree::Do(Box::new(func))
+    }
+
+    fn return_(value: Option<ParseTree>) -> Self {
+        ParseTree::Return(value.map(Box::new))
     }
 }
 
@@ -241,7 +246,7 @@ fn statements(mut lexer: JackTokenizer) -> ParseResult<ParseTree> {
 }
 
 parser! {
-    statement = let_statement | if_statement | while_statement | do_statement
+    statement = let_statement | if_statement | while_statement | do_statement | return_statement
 }
 
 parser! {
@@ -260,6 +265,11 @@ parser! {
 
 parser! {
     do_statement = ("do" fun @ subroutine_call ';' => ParseTree::do_(fun))
+}
+
+parser! {
+    return_statement = ("return" ';' => ParseTree::return_(None))
+                     | ("return" val @ expression ';' => ParseTree::return_(Some(val)))
 }
 
 parser! {
@@ -626,6 +636,22 @@ mod tests {
             statement(JackTokenizer::new("do foo();")),
             Ok((
                 ParseTree::do_(ParseTree::function_call("foo", vec![])),
+                JackTokenizer::end()
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_return_statement() {
+        assert_eq!(
+            statement(JackTokenizer::new("return;")),
+            Ok((ParseTree::return_(None), JackTokenizer::end()))
+        );
+
+        assert_eq!(
+            statement(JackTokenizer::new("return null;")),
+            Ok((
+                ParseTree::return_(Some(ParseTree::Null)),
                 JackTokenizer::end()
             ))
         );
