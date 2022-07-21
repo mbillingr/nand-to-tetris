@@ -21,7 +21,8 @@ enum ParseTree {
     MethodCall(String, String, Vec<ParseTree>),
     Statements(Vec<ParseTree>),
     Let(String, Option<Box<ParseTree>>, Box<ParseTree>),
-    If(Box<ParseTree>, Box<ParseTree>, Option<Box<ParseTree>>)
+    If(Box<ParseTree>, Box<ParseTree>, Option<Box<ParseTree>>),
+    While(Box<ParseTree>, Box<ParseTree>),
 }
 
 impl ParseTree {
@@ -77,8 +78,12 @@ impl ParseTree {
         ParseTree::If(
             Box::new(condition),
             Box::new(consequence),
-            alternative.map(Box::new)
+            alternative.map(Box::new),
         )
+    }
+
+    fn while_(condition: ParseTree, body: ParseTree) -> Self {
+        ParseTree::While(Box::new(condition), Box::new(body))
     }
 }
 
@@ -231,7 +236,7 @@ fn statements(mut lexer: JackTokenizer) -> ParseResult<ParseTree> {
 }
 
 parser! {
-    statement = let_statement | if_statement
+    statement = let_statement | if_statement | while_statement
 }
 
 parser! {
@@ -242,6 +247,10 @@ parser! {
 parser! {
     if_statement = ("if" '(' cnd @ expression ')' '{' thn @ statements '}' "else" '{' alt @ statements '}' => ParseTree::if_(cnd, thn, Some(alt)))
                  | ("if" '(' cnd @ expression ')' '{' thn @ statements '}' => ParseTree::if_(cnd, thn, None))
+}
+
+parser! {
+    while_statement = ("while" '(' cnd @ expression ')' '{' bdy @ statements '}' => ParseTree::while_(cnd, bdy))
 }
 
 parser! {
@@ -581,11 +590,18 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("if (true) {}")),
             Ok((
-                ParseTree::if_(
-                    ParseTree::True,
-                    ParseTree::statements(vec![]),
-                    None
-                ),
+                ParseTree::if_(ParseTree::True, ParseTree::statements(vec![]), None),
+                JackTokenizer::end()
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_while_statement() {
+        assert_eq!(
+            statement(JackTokenizer::new("while (true) {}")),
+            Ok((
+                ParseTree::while_(ParseTree::True, ParseTree::statements(vec![]),),
                 JackTokenizer::end()
             ))
         );
