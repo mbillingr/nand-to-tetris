@@ -7,11 +7,6 @@ type ParseResult<'s, T = ParseTree> = Result<(T, JackTokenizer<'s>), JackTokeniz
 
 #[derive(Debug, Eq, PartialEq)]
 enum ParseTree {
-    Let(String, Option<Expression>, Expression),
-    If(Expression, Vec<ParseTree>, Vec<ParseTree>),
-    While(Expression, Vec<ParseTree>),
-    Do(SubroutineCall),
-    Return(Option<Expression>),
     VarDec(Type, Vec<String>),
 }
 
@@ -21,6 +16,37 @@ enum Type {
     Char,
     Bool,
     Class(String),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum Statement {
+    Let(String, Option<Expression>, Expression),
+    If(Expression, Vec<Statement>, Vec<Statement>),
+    While(Expression, Vec<Statement>),
+    Do(SubroutineCall),
+    Return(Option<Expression>),
+}
+
+impl Statement {
+    fn let_(
+        varname: impl ToString,
+        array_index: Option<Expression>,
+        value: impl Into<Expression>,
+    ) -> Self {
+        Self::Let(varname.to_string(), array_index, value.into())
+    }
+
+    fn if_(
+        condition: impl Into<Expression>,
+        consequence: Vec<Statement>,
+        alternative: Vec<Statement>,
+    ) -> Self {
+        Self::If(condition.into(), consequence, alternative)
+    }
+
+    fn while_(condition: impl Into<Expression>, body: Vec<Statement>) -> Self {
+        Self::While(condition.into(), body)
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -133,26 +159,6 @@ impl SubroutineCall {
 }
 
 impl ParseTree {
-    fn let_(
-        varname: impl ToString,
-        array_index: Option<Expression>,
-        value: impl Into<Expression>,
-    ) -> Self {
-        ParseTree::Let(varname.to_string(), array_index, value.into())
-    }
-
-    fn if_(
-        condition: impl Into<Expression>,
-        consequence: Vec<ParseTree>,
-        alternative: Vec<ParseTree>,
-    ) -> Self {
-        ParseTree::If(condition.into(), consequence, alternative)
-    }
-
-    fn while_(condition: impl Into<Expression>, body: Vec<ParseTree>) -> Self {
-        ParseTree::While(condition.into(), body)
-    }
-
     fn vardec(typ: Type, vars: Vec<&str>) -> Self {
         ParseTree::VarDec(typ, vars.into_iter().map(str::to_string).collect())
     }
@@ -315,34 +321,34 @@ parser! {
 }
 
 parser! {
-    statements: Vec<ParseTree> = (* statement)
+    statements: Vec<Statement> = (* statement)
 }
 
 parser! {
-    statement = let_statement | if_statement | while_statement | do_statement | return_statement
+    statement : Statement  = let_statement | if_statement | while_statement | do_statement | return_statement
 }
 
 parser! {
-    let_statement = ("let" (var @ identifier) '=' (val @ expression) ';' => ParseTree::let_(var, None, val))
-                  | ("let" (var @ identifier) '[' (idx @ expression) ']' '=' (val @ expression) ';' => ParseTree::let_(var, Some(idx), val))
+    let_statement : Statement = ("let" (var @ identifier) '=' (val @ expression) ';' => Statement::let_(var, None, val))
+                              | ("let" (var @ identifier) '[' (idx @ expression) ']' '=' (val @ expression) ';' => Statement::let_(var, Some(idx), val))
 }
 
 parser! {
-    if_statement = ("if" '(' cnd @ expression ')' '{' thn @ statements '}' "else" '{' alt @ statements '}' => ParseTree::if_(cnd, thn, alt))
-                 | ("if" '(' cnd @ expression ')' '{' thn @ statements '}' => ParseTree::if_(cnd, thn, vec![]))
+    if_statement : Statement = ("if" '(' cnd @ expression ')' '{' thn @ statements '}' "else" '{' alt @ statements '}' => Statement::if_(cnd, thn, alt))
+                             | ("if" '(' cnd @ expression ')' '{' thn @ statements '}' => Statement::if_(cnd, thn, vec![]))
 }
 
 parser! {
-    while_statement = ("while" '(' cnd @ expression ')' '{' bdy @ statements '}' => ParseTree::while_(cnd, bdy))
+    while_statement : Statement = ("while" '(' cnd @ expression ')' '{' bdy @ statements '}' => Statement::while_(cnd, bdy))
 }
 
 parser! {
-    do_statement = ("do" fun @ subroutine_call ';' => ParseTree::Do(fun))
+    do_statement : Statement = ("do" fun @ subroutine_call ';' => Statement::Do(fun))
 }
 
 parser! {
-    return_statement = ("return" ';' => ParseTree::Return(None))
-                     | ("return" val @ expression ';' => ParseTree::Return(Some(val)))
+    return_statement : Statement = ("return" ';' => Statement::Return(None))
+                                 | ("return" val @ expression ';' => Statement::Return(Some(val)))
 }
 
 parser! {
@@ -372,10 +378,6 @@ parser! {
                             | ("false" => Term::False)
                             | ("null" => Term::Null)
                             | ("this" => Term::This)
-}
-
-parser! {
-    parse_unary_op: char = '-' | '~'
 }
 
 parser! {
@@ -614,7 +616,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("let foo = bar;")),
             Ok((
-                ParseTree::let_("foo", None, Term::variable("bar")),
+                Statement::let_("foo", None, Term::variable("bar")),
                 JackTokenizer::end()
             ))
         );
@@ -622,7 +624,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("let foo[0] = bar;")),
             Ok((
-                ParseTree::let_("foo", Some(Expression::integer(0)), Term::variable("bar")),
+                Statement::let_("foo", Some(Expression::integer(0)), Term::variable("bar")),
                 JackTokenizer::end()
             ))
         );
@@ -638,7 +640,7 @@ mod tests {
         assert_eq!(
             statements(JackTokenizer::new("let x = 0;")),
             Ok((
-                vec![ParseTree::let_("x", None, Term::Integer(0))],
+                vec![Statement::let_("x", None, Term::Integer(0))],
                 JackTokenizer::end()
             ))
         );
@@ -647,8 +649,8 @@ mod tests {
             statements(JackTokenizer::new("let x = 0;let y=1;")),
             Ok((
                 vec![
-                    ParseTree::let_("x", None, Term::Integer(0)),
-                    ParseTree::let_("y", None, Term::Integer(1))
+                    Statement::let_("x", None, Term::Integer(0)),
+                    Statement::let_("y", None, Term::Integer(1))
                 ],
                 JackTokenizer::end()
             ))
@@ -660,7 +662,7 @@ mod tests {
         assert_eq!(
             statements(JackTokenizer::new("let x=0; let y")),
             Ok((
-                vec![ParseTree::let_("x", None, Term::Integer(0))],
+                vec![Statement::let_("x", None, Term::Integer(0))],
                 JackTokenizer::new("let y")
             ))
         );
@@ -671,7 +673,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("if (true) {} else {}")),
             Ok((
-                ParseTree::if_(Term::True, vec![], vec![]),
+                Statement::if_(Term::True, vec![], vec![]),
                 JackTokenizer::end()
             ))
         );
@@ -679,7 +681,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("if (true) {}")),
             Ok((
-                ParseTree::if_(Term::True, vec![], vec![]),
+                Statement::if_(Term::True, vec![], vec![]),
                 JackTokenizer::end()
             ))
         );
@@ -689,7 +691,7 @@ mod tests {
     fn parse_while_statement() {
         assert_eq!(
             statement(JackTokenizer::new("while (true) {}")),
-            Ok((ParseTree::while_(Term::True, vec![],), JackTokenizer::end()))
+            Ok((Statement::while_(Term::True, vec![],), JackTokenizer::end()))
         );
     }
 
@@ -698,7 +700,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("do foo();")),
             Ok((
-                ParseTree::Do(SubroutineCall::function_call("foo", vec![])),
+                Statement::Do(SubroutineCall::function_call("foo", vec![])),
                 JackTokenizer::end()
             ))
         );
@@ -708,13 +710,13 @@ mod tests {
     fn parse_return_statement() {
         assert_eq!(
             statement(JackTokenizer::new("return;")),
-            Ok((ParseTree::Return(None), JackTokenizer::end()))
+            Ok((Statement::Return(None), JackTokenizer::end()))
         );
 
         assert_eq!(
             statement(JackTokenizer::new("return null;")),
             Ok((
-                ParseTree::Return(Some(Term::Null.into())),
+                Statement::Return(Some(Term::Null.into())),
                 JackTokenizer::end()
             ))
         );
