@@ -14,6 +14,7 @@ enum ParseTree {
     Integer(u16),
     String(String),
     VarName(String),
+    Type(Type),
     UnaryOp(char, Box<ParseTree>),
     BinaryOp(char, Box<ParseTree>, Box<ParseTree>),
     ArrayIndex(String, Box<ParseTree>),
@@ -25,6 +26,14 @@ enum ParseTree {
     While(Box<ParseTree>, Box<ParseTree>),
     Do(Box<ParseTree>),
     Return(Option<Box<ParseTree>>),
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum Type {
+    Int,
+    Char,
+    Bool,
+    Class(String),
 }
 
 impl ParseTree {
@@ -229,6 +238,13 @@ macro_rules! parser {
     (@parse $lexer:expr, $literal:expr) => {
         Parser::parse(&$literal, $lexer)
     };
+}
+
+parser! {
+    type_ = ("int" => ParseTree::Type(Type::Int))
+          | ("char" => ParseTree::Type(Type::Char))
+          | ("bool" => ParseTree::Type(Type::Bool))
+          | (cls @ identifier => ParseTree::Type(Type::Class(cls.to_string())))
 }
 
 fn statements(mut lexer: JackTokenizer) -> ParseResult<ParseTree> {
@@ -652,6 +668,32 @@ mod tests {
             statement(JackTokenizer::new("return null;")),
             Ok((
                 ParseTree::return_(Some(ParseTree::Null)),
+                JackTokenizer::end()
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_type() {
+        assert_eq!(
+            type_(JackTokenizer::new("int")),
+            Ok((ParseTree::Type(Type::Int), JackTokenizer::end()))
+        );
+
+        assert_eq!(
+            type_(JackTokenizer::new("char")),
+            Ok((ParseTree::Type(Type::Char), JackTokenizer::end()))
+        );
+
+        assert_eq!(
+            type_(JackTokenizer::new("bool")),
+            Ok((ParseTree::Type(Type::Bool), JackTokenizer::end()))
+        );
+
+        assert_eq!(
+            type_(JackTokenizer::new("Custom")),
+            Ok((
+                ParseTree::Type(Type::Class("Custom".to_string())),
                 JackTokenizer::end()
             ))
         );

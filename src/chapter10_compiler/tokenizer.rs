@@ -159,7 +159,7 @@ impl Keyword {
             "var" => Some(Keyword::Var),
             "int" => Some(Keyword::Int),
             "char" => Some(Keyword::Char),
-            "boolean" => Some(Keyword::Boolean),
+            "bool" => Some(Keyword::Boolean),
             "void" => Some(Keyword::Void),
             "true" => Some(Keyword::True),
             "false" => Some(Keyword::False),
