@@ -3,11 +3,15 @@ use minifb::Key::K;
 use std::ops::BitOr;
 use std::process::Output;
 
-type ParseResult<'s, T = ParseTree> = Result<(T, JackTokenizer<'s>), JackTokenizer<'s>>;
+type ParseResult<'s, T> = Result<(T, JackTokenizer<'s>), JackTokenizer<'s>>;
 
 #[derive(Debug, Eq, PartialEq)]
-enum ParseTree {
-    VarDec(Type, Vec<String>),
+struct VarDec(Type, Vec<String>);
+
+impl VarDec {
+    fn new(typ: Type, vars: Vec<&str>) -> Self {
+        VarDec(typ, vars.into_iter().map(str::to_string).collect())
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -158,12 +162,6 @@ impl SubroutineCall {
     }
 }
 
-impl ParseTree {
-    fn vardec(typ: Type, vars: Vec<&str>) -> Self {
-        ParseTree::VarDec(typ, vars.into_iter().map(str::to_string).collect())
-    }
-}
-
 trait Parser {
     type Output;
     fn parse<'s>(&self, lexer: JackTokenizer<'s>) -> ParseResult<'s, Self::Output>;
@@ -230,12 +228,6 @@ where
 macro_rules! parser {
     ($lhs:ident: $t:ty = $($rhs:tt)+) => {
         fn $lhs(lexer: JackTokenizer) -> ParseResult<$t> {
-            parser!(@parse lexer, $($rhs)+)
-        }
-    };
-
-    ($lhs:ident = $($rhs:tt)+) => {
-        fn $lhs(lexer: JackTokenizer) -> ParseResult {
             parser!(@parse lexer, $($rhs)+)
         }
     };
@@ -313,11 +305,11 @@ parser! {
 }
 
 parser! {
-    vardec = ("var" (typ @ type_) (fst @ identifier) (vars @ (* ',' identifier)) ';' => {
-                let mut vars=vars;
-                vars.insert(0, fst);
-                ParseTree::vardec(typ, vars)
-             } )
+    vardec : VarDec = ("var" (typ @ type_) (fst @ identifier) (vars @ (* ',' identifier)) ';' => {
+                        let mut vars=vars;
+                        vars.insert(0, fst);
+                        VarDec::new(typ, vars)
+                      } )
 }
 
 parser! {
@@ -749,16 +741,13 @@ mod tests {
     fn parse_vardec() {
         assert_eq!(
             vardec(JackTokenizer::new("var int x;")),
-            Ok((
-                ParseTree::vardec(Type::Int, vec!["x"]),
-                JackTokenizer::end()
-            ))
+            Ok((VarDec::new(Type::Int, vec!["x"]), JackTokenizer::end()))
         );
 
         assert_eq!(
             vardec(JackTokenizer::new("var int x, y, z;")),
             Ok((
-                ParseTree::vardec(Type::Int, vec!["x", "y", "z"]),
+                VarDec::new(Type::Int, vec!["x", "y", "z"]),
                 JackTokenizer::end()
             ))
         );
