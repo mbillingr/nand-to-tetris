@@ -23,6 +23,7 @@ enum ParseTree {
     Let(String, Option<Box<ParseTree>>, Box<ParseTree>),
     If(Box<ParseTree>, Box<ParseTree>, Option<Box<ParseTree>>),
     While(Box<ParseTree>, Box<ParseTree>),
+    Do(Box<ParseTree>),
 }
 
 impl ParseTree {
@@ -84,6 +85,10 @@ impl ParseTree {
 
     fn while_(condition: ParseTree, body: ParseTree) -> Self {
         ParseTree::While(Box::new(condition), Box::new(body))
+    }
+
+    fn do_(func: ParseTree) -> Self {
+        ParseTree::Do(Box::new(func))
     }
 }
 
@@ -236,7 +241,7 @@ fn statements(mut lexer: JackTokenizer) -> ParseResult<ParseTree> {
 }
 
 parser! {
-    statement = let_statement | if_statement | while_statement
+    statement = let_statement | if_statement | while_statement | do_statement
 }
 
 parser! {
@@ -251,6 +256,10 @@ parser! {
 
 parser! {
     while_statement = ("while" '(' cnd @ expression ')' '{' bdy @ statements '}' => ParseTree::while_(cnd, bdy))
+}
+
+parser! {
+    do_statement = ("do" fun @ subroutine_call ';' => ParseTree::do_(fun))
 }
 
 parser! {
@@ -606,6 +615,17 @@ mod tests {
             statement(JackTokenizer::new("while (true) {}")),
             Ok((
                 ParseTree::while_(ParseTree::True, ParseTree::statements(vec![]),),
+                JackTokenizer::end()
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_do_statement() {
+        assert_eq!(
+            statement(JackTokenizer::new("do foo();")),
+            Ok((
+                ParseTree::do_(ParseTree::function_call("foo", vec![])),
                 JackTokenizer::end()
             ))
         );
