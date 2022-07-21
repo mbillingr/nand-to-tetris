@@ -19,6 +19,7 @@ enum ParseTree {
     ArrayIndex(String, Box<ParseTree>),
     FunctionCall(String, Vec<ParseTree>),
     MethodCall(String, String, Vec<ParseTree>),
+    Statements(Vec<ParseTree>),
     Let(String, Option<Box<ParseTree>>, Box<ParseTree>),
 }
 
@@ -57,6 +58,10 @@ impl ParseTree {
 
     fn method_call(obj: impl ToString, func: impl ToString, args: Vec<ParseTree>) -> Self {
         ParseTree::MethodCall(obj.to_string(), func.to_string(), args)
+    }
+
+    fn statements(stmts: Vec<ParseTree>) -> Self {
+        ParseTree::Statements(stmts)
     }
 
     fn let_(varname: impl ToString, array_index: Option<ParseTree>, value: ParseTree) -> Self {
@@ -117,9 +122,9 @@ impl<T: Parser> Parser for ParserWrapper<T> {
 struct Either<A, B>(A, B);
 
 impl<A, B> Parser for Either<A, B>
-    where
-        A: Parser,
-        B: Parser<Output = A::Output>,
+where
+    A: Parser,
+    B: Parser<Output = A::Output>,
 {
     type Output = B::Output;
     fn parse<'s>(&self, lexer: JackTokenizer<'s>) -> ParseResult<'s, Self::Output> {
@@ -202,13 +207,27 @@ macro_rules! parser {
     };
 }
 
-parser! {
-    parse_statement = parse_let_statement
+fn statements(mut lexer: JackTokenizer) -> ParseResult<ParseTree> {
+    let mut stmts = vec![];
+    loop {
+        match statement(lexer) {
+            Ok((stmt, lx)) => {
+                lexer = lx;
+                stmts.push(stmt);
+            }
+            Err(_) => break,
+        }
+    }
+    Ok((ParseTree::statements(stmts), lexer))
 }
 
 parser! {
-    parse_let_statement = ("let" (var @ identifier) '=' (val @ expression) ';' => ParseTree::let_(var, None, val))
-                        | ("let" (var @ identifier) '[' (idx @ expression) ']' '=' (val @ expression) ';' => ParseTree::let_(var, Some(idx), val))
+    statement =let_statement
+}
+
+parser! {
+    let_statement = ("let" (var @ identifier) '=' (val @ expression) ';' => ParseTree::let_(var, None, val))
+                  | ("let" (var @ identifier) '[' (idx @ expression) ']' '=' (val @ expression) ';' => ParseTree::let_(var, Some(idx), val))
 }
 
 parser! {
@@ -473,7 +492,7 @@ mod tests {
     #[test]
     fn parse_let_statement() {
         assert_eq!(
-            parse_statement(JackTokenizer::new("let foo = bar;")),
+            statement(JackTokenizer::new("let foo = bar;")),
             Ok((
                 ParseTree::let_("foo", None, ParseTree::var_name("bar")),
                 JackTokenizer::end()
@@ -481,7 +500,7 @@ mod tests {
         );
 
         assert_eq!(
-            parse_statement(JackTokenizer::new("let foo[0] = bar;")),
+            statement(JackTokenizer::new("let foo[0] = bar;")),
             Ok((
                 ParseTree::let_(
                     "foo",
@@ -489,6 +508,44 @@ mod tests {
                     ParseTree::var_name("bar")
                 ),
                 JackTokenizer::end()
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_statement_sequence() {
+        assert_eq!(
+            statements(JackTokenizer::new("")),
+            Ok((ParseTree::statements(vec![]), JackTokenizer::end()))
+        );
+
+        assert_eq!(
+            statements(JackTokenizer::new("let x = 0;")),
+            Ok((
+                ParseTree::statements(vec![ParseTree::let_("x", None, ParseTree::Integer(0))]),
+                JackTokenizer::end()
+            ))
+        );
+
+        assert_eq!(
+            statements(JackTokenizer::new("let x = 0;let y=1;")),
+            Ok((
+                ParseTree::statements(vec![
+                    ParseTree::let_("x", None, ParseTree::Integer(0)),
+                    ParseTree::let_("y", None, ParseTree::Integer(1))
+                ]),
+                JackTokenizer::end()
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_statements_incomplete() {
+        assert_eq!(
+            statements(JackTokenizer::new("let x=0; let y")),
+            Ok((
+                ParseTree::statements(vec![ParseTree::let_("x", None, ParseTree::Integer(0))]),
+                JackTokenizer::new("let y")
             ))
         );
     }
