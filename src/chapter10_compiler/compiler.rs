@@ -262,12 +262,16 @@ parser! {
     term = integer_constant
          | string_constant
          | keyword_constant
+         | subroutine_call
          | (var @ identifier '[' idx @ expression ']' => ParseTree::array_index(var, idx))
-         | (obj @ identifier '.' fun @ identifier args @ expression_list => ParseTree::method_call(obj, fun, args))
-         | (fun @ identifier args @ expression_list => ParseTree::function_call(fun, args))
          | (var @ identifier => ParseTree::var_name(var))
          | ('(' x @ expression ')' => x)
          | (op @ parse_unary_op val @ term => ParseTree::unary_op(op, val))
+}
+
+parser! {
+    subroutine_call = (obj @ identifier '.' fun @ identifier args @ expression_list => ParseTree::method_call(obj, fun, args))
+                    | (fun @ identifier args @ expression_list => ParseTree::function_call(fun, args))
 }
 
 parser! {
