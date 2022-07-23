@@ -6,6 +6,15 @@ use std::process::Output;
 type ParseResult<'s, T> = Result<(T, JackTokenizer<'s>), JackTokenizer<'s>>;
 
 #[derive(Debug, Eq, PartialEq)]
+struct SubroutineBody(Vec<VarDec>, Vec<Statement>);
+
+impl SubroutineBody {
+    fn new(vars: Vec<VarDec>, stmts: Vec<Statement>) -> Self {
+        SubroutineBody(vars, stmts)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
 struct VarDec(Type, Vec<String>);
 
 impl VarDec {
@@ -143,6 +152,18 @@ impl From<Term> for Expression {
 impl From<Expression> for Term {
     fn from(x: Expression) -> Self {
         Self::expression(x)
+    }
+}
+
+impl From<u16> for Expression {
+    fn from(x: u16) -> Self {
+        Self::integer(x)
+    }
+}
+
+impl From<u16> for Term {
+    fn from(x: u16) -> Self {
+        Self::integer(x)
     }
 }
 
@@ -302,6 +323,10 @@ parser! {
                 | ("char" => Type::Char)
                 | ("bool" => Type::Bool)
                 | (cls @ identifier => Type::Class(cls.to_string()))
+}
+
+parser! {
+    subroutine_body : SubroutineBody = ('{' vdcs @ (*vardec) stmts @ (*statement) '}' => SubroutineBody(vdcs, stmts))
 }
 
 parser! {
@@ -748,6 +773,41 @@ mod tests {
             vardec(JackTokenizer::new("var int x, y, z;")),
             Ok((
                 VarDec::new(Type::Int, vec!["x", "y", "z"]),
+                JackTokenizer::end()
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_subroutine_body() {
+        assert_eq!(
+            subroutine_body(JackTokenizer::new("{}")),
+            Ok((SubroutineBody::new(vec![], vec![]), JackTokenizer::end()))
+        );
+
+        assert_eq!(
+            subroutine_body(JackTokenizer::new("{return;}")),
+            Ok((
+                SubroutineBody::new(vec![], vec![Statement::Return(None)]),
+                JackTokenizer::end()
+            ))
+        );
+
+        assert_eq!(
+            subroutine_body(JackTokenizer::new("{let x=0; return;}")),
+            Ok((
+                SubroutineBody::new(
+                    vec![],
+                    vec![Statement::let_("x", None, 0), Statement::Return(None)]
+                ),
+                JackTokenizer::end()
+            ))
+        );
+
+        assert_eq!(
+            subroutine_body(JackTokenizer::new("{var int x;}")),
+            Ok((
+                SubroutineBody::new(vec![VarDec::new(Type::Int, vec!["x"])], vec![]),
                 JackTokenizer::end()
             ))
         );
