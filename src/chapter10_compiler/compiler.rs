@@ -326,7 +326,8 @@ parser! {
 }
 
 parser! {
-    parameter_list : Vec<(Type, String)> = (par @ (t@type_ n@var_name => (t,n)) => vec![par])
+    parameter_list : Vec<(Type, String)> = (t0@type_ n0@var_name pars @ (*(',' t@type_ n@var_name => (t, n))) => cons((t0, n0), pars))
+                                         | (par @ (t@type_ n@var_name => (t,n)) => vec![par])
                                          | ( => vec![])
 }
 
@@ -335,11 +336,7 @@ parser! {
 }
 
 parser! {
-    vardec : VarDec = ("var" (typ @ type_) (fst @ identifier) (vars @ (* ',' identifier)) ';' => {
-                        let mut vars=vars;
-                        vars.insert(0, fst);
-                        VarDec::new(typ, vars)
-                      } )
+    vardec : VarDec = ("var" (typ @ type_) (fst @ var_name) (vars @ (* ',' var_name)) ';' => VarDec(typ, cons(fst, vars)))
 }
 
 parser! {
@@ -355,8 +352,8 @@ parser! {
 }
 
 parser! {
-    let_statement : Statement = ("let" (var @ identifier) '=' (val @ expression) ';' => Statement::let_(var, None, val))
-                              | ("let" (var @ identifier) '[' (idx @ expression) ']' '=' (val @ expression) ';' => Statement::let_(var, Some(idx), val))
+    let_statement : Statement = ("let" (var @ var_name) '=' (val @ expression) ';' => Statement::let_(var, None, val))
+                              | ("let" (var @ var_name) '[' (idx @ expression) ']' '=' (val @ expression) ';' => Statement::let_(var, Some(idx), val))
 }
 
 parser! {
@@ -387,8 +384,8 @@ parser! {
                | (s @ string_constant => Term::String(s))
                | keyword_constant
                | (c @ subroutine_call => Term::Call(c))
-               | (var @ identifier '[' idx @ expression ']' => Term::array_index(var, idx))
-               | (var @ identifier => Term::variable(var))
+               | (var @ var_name '[' idx @ expression ']' => Term::array_index(var, idx))
+               | (var @ var_name => Term::variable(var))
                | ('(' x @ expression ')' => Term::expression(x))
                | ('-' val @ term => Term::neg(val))
                | ('~' val @ term => Term::not(val))
@@ -408,6 +405,11 @@ parser! {
 
 parser! {
     parse_binary_op: char = '+' | '-' | '*' | '/' | '&' | '|' | '<' | '>' | '='
+}
+
+fn cons<T>(e: T, mut es: Vec<T>) -> Vec<T> {
+    es.insert(0, e);
+    es
 }
 
 fn expression_list(mut lexer: JackTokenizer) -> ParseResult<Vec<Expression>> {
