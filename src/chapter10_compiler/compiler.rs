@@ -326,6 +326,11 @@ parser! {
 }
 
 parser! {
+    parameter_list : Vec<(Type, String)> = (par @ (t@type_ n@var_name => (t,n)) => vec![par])
+                                         | ( => vec![])
+}
+
+parser! {
     subroutine_body : SubroutineBody = ('{' vdcs @ (*vardec) stmts @ (*statement) '}' => SubroutineBody(vdcs, stmts))
 }
 
@@ -335,6 +340,10 @@ parser! {
                         vars.insert(0, fst);
                         VarDec::new(typ, vars)
                       } )
+}
+
+parser! {
+    var_name : String = (name @ identifier => name.to_string())
 }
 
 parser! {
@@ -808,6 +817,27 @@ mod tests {
             subroutine_body(JackTokenizer::new("{var int x;}")),
             Ok((
                 SubroutineBody::new(vec![VarDec::new(Type::Int, vec!["x"])], vec![]),
+                JackTokenizer::end()
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_parameter_list() {
+        assert_eq!(
+            parameter_list(JackTokenizer::new("")),
+            Ok((vec![], JackTokenizer::end()))
+        );
+
+        assert_eq!(
+            parameter_list(JackTokenizer::new("int x")),
+            Ok((vec![(Type::Int, "x".to_string())], JackTokenizer::end()))
+        );
+
+        assert_eq!(
+            parameter_list(JackTokenizer::new("int x, bool y")),
+            Ok((
+                vec![(Type::Int, "x".to_string()), (Type::Bool, "y".to_string())],
                 JackTokenizer::end()
             ))
         );
