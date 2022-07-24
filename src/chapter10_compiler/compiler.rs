@@ -6,6 +6,22 @@ use std::process::Output;
 type ParseResult<'s, T> = Result<(T, JackTokenizer<'s>), JackTokenizer<'s>>;
 
 #[derive(Debug, Eq, PartialEq)]
+struct SubroutineDec(
+    SubroutineKind,
+    Type,
+    String,
+    Vec<(Type, String)>,
+    SubroutineBody,
+);
+
+#[derive(Debug, Eq, PartialEq)]
+enum SubroutineKind {
+    Function,
+    Constructor,
+    Method,
+}
+
+#[derive(Debug, Eq, PartialEq)]
 struct SubroutineBody(Vec<VarDec>, Vec<Statement>);
 
 impl SubroutineBody {
@@ -25,6 +41,7 @@ impl VarDec {
 
 #[derive(Debug, Eq, PartialEq)]
 enum Type {
+    Void,
     Int,
     Char,
     Bool,
@@ -295,6 +312,13 @@ macro_rules! parser {
         parser!(@parse $lexer, ($var @ $first $($rest)*))
     };
 
+    (@parse $lexer:expr, ( $($option:tt)|* ) ) => {
+        Err($lexer)
+        $(
+            .or_else(|_|parser!(@parse $lexer, $option))
+        )*
+    };
+
     (@parse $lexer:expr, ( $first:tt $($rest:tt)* ) ) => {
         match parser!(@parse $lexer, $first) {
             Ok((_, lx)) => { parser!(@parse lx, ( $($rest)* ) ) }
@@ -326,6 +350,17 @@ parser! {
 }
 
 parser! {
+    subroutine_dec: SubroutineDec = (kind @ (("constructor" => SubroutineKind::Constructor)
+                                             | ("function" => SubroutineKind::Function)
+                                             | ("method" => SubroutineKind::Method))
+                                     typ @ (("void" => Type::Void) | type_)
+                                     name @ subroutine_name
+                                     '(' params @ parameter_list ')'
+                                     body @ subroutine_body
+                                     => SubroutineDec(kind, typ, name, params, body))
+}
+
+parser! {
     parameter_list : Vec<(Type, String)> = (t0@type_ n0@var_name pars @ (*(',' t@type_ n@var_name => (t, n))) => cons((t0, n0), pars))
                                          | (par @ (t@type_ n@var_name => (t,n)) => vec![par])
                                          | ( => vec![])
@@ -337,6 +372,10 @@ parser! {
 
 parser! {
     vardec : VarDec = ("var" (typ @ type_) (fst @ var_name) (vars @ (* ',' var_name)) ';' => VarDec(typ, cons(fst, vars)))
+}
+
+parser! {
+    subroutine_name : String = (name @ identifier => name.to_string())
 }
 
 parser! {
@@ -840,6 +879,51 @@ mod tests {
             parameter_list(JackTokenizer::new("int x, bool y")),
             Ok((
                 vec![(Type::Int, "x".to_string()), (Type::Bool, "y".to_string())],
+                JackTokenizer::end()
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_subroutine_declaration() {
+        assert_eq!(
+            subroutine_dec(JackTokenizer::new("function void foo() {}")),
+            Ok((
+                SubroutineDec(
+                    SubroutineKind::Function,
+                    Type::Void,
+                    "foo".to_string(),
+                    vec![],
+                    SubroutineBody(vec![], vec![])
+                ),
+                JackTokenizer::end()
+            ))
+        );
+
+        assert_eq!(
+            subroutine_dec(JackTokenizer::new("constructor void foo() {}")),
+            Ok((
+                SubroutineDec(
+                    SubroutineKind::Constructor,
+                    Type::Void,
+                    "foo".to_string(),
+                    vec![],
+                    SubroutineBody(vec![], vec![])
+                ),
+                JackTokenizer::end()
+            ))
+        );
+
+        assert_eq!(
+            subroutine_dec(JackTokenizer::new("method void foo() {}")),
+            Ok((
+                SubroutineDec(
+                    SubroutineKind::Method,
+                    Type::Void,
+                    "foo".to_string(),
+                    vec![],
+                    SubroutineBody(vec![], vec![])
+                ),
                 JackTokenizer::end()
             ))
         );
