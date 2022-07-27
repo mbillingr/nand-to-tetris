@@ -6,6 +6,12 @@ use std::process::Output;
 type ParseResult<'s, T> = Result<(T, JackTokenizer<'s>), JackTokenizer<'s>>;
 
 #[derive(Debug, Eq, PartialEq)]
+enum ClassVarDec {
+    Static(Type, Vec<String>),
+    Field(Type, Vec<String>),
+}
+
+#[derive(Debug, Eq, PartialEq)]
 struct SubroutineDec(
     SubroutineKind,
     Type,
@@ -347,6 +353,11 @@ parser! {
                 | ("char" => Type::Char)
                 | ("bool" => Type::Bool)
                 | (cls @ identifier => Type::Class(cls.to_string()))
+}
+
+parser! {
+    classvar_dec: ClassVarDec = ("static" typ @ type_ n0@var_name names@(* (',' n@var_name => n)) ';' => ClassVarDec::Static(typ, cons(n0, names)))
+                              | ("field" typ @ type_ n0@var_name names@(* (',' n@var_name => n)) ';' => ClassVarDec::Field(typ, cons(n0, names)))
 }
 
 parser! {
@@ -922,12 +933,12 @@ mod tests {
 
         assert_eq!(
             subroutine_dec(JackTokenizer::new(
-                "method void foo() {var int x; let x=42; return x;}"
+                "method int foo() {var int x; let x=42; return x;}"
             )),
             Ok((
                 SubroutineDec(
                     SubroutineKind::Method,
-                    Type::Void,
+                    Type::Int,
                     "foo".to_string(),
                     vec![],
                     SubroutineBody(
@@ -938,6 +949,32 @@ mod tests {
                         ]
                     )
                 ),
+                JackTokenizer::end()
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_classvar_declaration() {
+        assert_eq!(
+            classvar_dec(JackTokenizer::new("static int foo;")),
+            Ok((
+                ClassVarDec::Static(Type::Int, vec!["foo".to_string()]),
+                JackTokenizer::end()
+            ))
+        );
+
+        assert_eq!(
+            classvar_dec(JackTokenizer::new("field int bar;")),
+            Ok((
+                ClassVarDec::Field(Type::Int, vec!["bar".to_string()]),
+                JackTokenizer::end()
+            ))
+        );
+        assert_eq!(
+            classvar_dec(JackTokenizer::new("static int foo, bar;")),
+            Ok((
+                ClassVarDec::Static(Type::Int, vec!["foo".to_string(), "bar".to_string()]),
                 JackTokenizer::end()
             ))
         );
