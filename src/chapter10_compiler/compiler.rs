@@ -901,13 +901,19 @@ mod tests {
         );
 
         assert_eq!(
-            subroutine_dec(JackTokenizer::new("constructor void foo() {}")),
+            subroutine_dec(JackTokenizer::new(
+                "constructor void foo(int x, char y, bool z) {}"
+            )),
             Ok((
                 SubroutineDec(
                     SubroutineKind::Constructor,
                     Type::Void,
                     "foo".to_string(),
-                    vec![],
+                    vec![
+                        (Type::Int, "x".to_string()),
+                        (Type::Char, "y".to_string()),
+                        (Type::Bool, "z".to_string())
+                    ],
                     SubroutineBody(vec![], vec![])
                 ),
                 JackTokenizer::end()
@@ -915,14 +921,22 @@ mod tests {
         );
 
         assert_eq!(
-            subroutine_dec(JackTokenizer::new("method void foo() {}")),
+            subroutine_dec(JackTokenizer::new(
+                "method void foo() {var int x; let x=42; return x;}"
+            )),
             Ok((
                 SubroutineDec(
                     SubroutineKind::Method,
                     Type::Void,
                     "foo".to_string(),
                     vec![],
-                    SubroutineBody(vec![], vec![])
+                    SubroutineBody(
+                        vec![VarDec::new(Type::Int, vec!["x"])],
+                        vec![
+                            Statement::let_("x", None, 42),
+                            Statement::Return(Some(Term::variable("x").into()))
+                        ]
+                    )
                 ),
                 JackTokenizer::end()
             ))
