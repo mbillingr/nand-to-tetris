@@ -6,19 +6,26 @@ use std::process::Output;
 type ParseResult<'s, T> = Result<(T, JackTokenizer<'s>), JackTokenizer<'s>>;
 
 #[derive(Debug, Eq, PartialEq)]
+struct Class {
+    name: String,
+    vars: Vec<ClassVarDec>,
+    funs: Vec<SubroutineDec>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
 enum ClassVarDec {
     Static(Type, Vec<String>),
     Field(Type, Vec<String>),
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct SubroutineDec(
-    SubroutineKind,
-    Type,
-    String,
-    Vec<(Type, String)>,
-    SubroutineBody,
-);
+struct SubroutineDec {
+    kind: SubroutineKind,
+    typ: Type,
+    name: String,
+    params: Vec<(Type, String)>,
+    body: SubroutineBody,
+}
 
 #[derive(Debug, Eq, PartialEq)]
 enum SubroutineKind {
@@ -356,6 +363,14 @@ parser! {
 }
 
 parser! {
+    class: Class = ("class" name@class_name '{' vars@(* classvar_dec) funs@(* subroutine_dec)'}' => Class{name, vars, funs})
+}
+
+parser! {
+    class_name : String = (name @ identifier => name.to_string())
+}
+
+parser! {
     classvar_dec: ClassVarDec = ("static" typ @ type_ n0@var_name names@(* (',' n@var_name => n)) ';' => ClassVarDec::Static(typ, cons(n0, names)))
                               | ("field" typ @ type_ n0@var_name names@(* (',' n@var_name => n)) ';' => ClassVarDec::Field(typ, cons(n0, names)))
 }
@@ -368,7 +383,7 @@ parser! {
                                      name @ subroutine_name
                                      '(' params @ parameter_list ')'
                                      body @ subroutine_body
-                                     => SubroutineDec(kind, typ, name, params, body))
+                                     => SubroutineDec{kind, typ, name, params, body})
 }
 
 parser! {
@@ -900,13 +915,13 @@ mod tests {
         assert_eq!(
             subroutine_dec(JackTokenizer::new("function void foo() {}")),
             Ok((
-                SubroutineDec(
-                    SubroutineKind::Function,
-                    Type::Void,
-                    "foo".to_string(),
-                    vec![],
-                    SubroutineBody(vec![], vec![])
-                ),
+                SubroutineDec {
+                    kind: SubroutineKind::Function,
+                    typ: Type::Void,
+                    name: "foo".to_string(),
+                    params: vec![],
+                    body: SubroutineBody(vec![], vec![])
+                },
                 JackTokenizer::end()
             ))
         );
@@ -916,17 +931,17 @@ mod tests {
                 "constructor void foo(int x, char y, bool z) {}"
             )),
             Ok((
-                SubroutineDec(
-                    SubroutineKind::Constructor,
-                    Type::Void,
-                    "foo".to_string(),
-                    vec![
+                SubroutineDec {
+                    kind: SubroutineKind::Constructor,
+                    typ: Type::Void,
+                    name: "foo".to_string(),
+                    params: vec![
                         (Type::Int, "x".to_string()),
                         (Type::Char, "y".to_string()),
                         (Type::Bool, "z".to_string())
                     ],
-                    SubroutineBody(vec![], vec![])
-                ),
+                    body: SubroutineBody(vec![], vec![])
+                },
                 JackTokenizer::end()
             ))
         );
@@ -936,19 +951,19 @@ mod tests {
                 "method int foo() {var int x; let x=42; return x;}"
             )),
             Ok((
-                SubroutineDec(
-                    SubroutineKind::Method,
-                    Type::Int,
-                    "foo".to_string(),
-                    vec![],
-                    SubroutineBody(
+                SubroutineDec {
+                    kind: SubroutineKind::Method,
+                    typ: Type::Int,
+                    name: "foo".to_string(),
+                    params: vec![],
+                    body: SubroutineBody(
                         vec![VarDec::new(Type::Int, vec!["x"])],
                         vec![
                             Statement::let_("x", None, 42),
                             Statement::Return(Some(Term::variable("x").into()))
                         ]
                     )
-                ),
+                },
                 JackTokenizer::end()
             ))
         );
@@ -975,6 +990,68 @@ mod tests {
             classvar_dec(JackTokenizer::new("static int foo, bar;")),
             Ok((
                 ClassVarDec::Static(Type::Int, vec!["foo".to_string(), "bar".to_string()]),
+                JackTokenizer::end()
+            ))
+        );
+    }
+
+    #[test]
+    fn parse_class() {
+        assert_eq!(
+            class(JackTokenizer::new("class Foo { }")),
+            Ok((
+                Class {
+                    name: "Foo".to_string(),
+                    vars: vec![],
+                    funs: vec![],
+                },
+                JackTokenizer::end()
+            ))
+        );
+
+        assert_eq!(
+            class(JackTokenizer::new("class Bar { field int baz; }")),
+            Ok((
+                Class {
+                    name: "Bar".to_string(),
+                    vars: vec![ClassVarDec::Field(Type::Int, vec!["baz".to_string()])],
+                    funs: vec![],
+                },
+                JackTokenizer::end()
+            ))
+        );
+
+        assert_eq!(
+            class(JackTokenizer::new(
+                "class Baz { field int a, b; static bool c, d; }"
+            )),
+            Ok((
+                Class {
+                    name: "Baz".to_string(),
+                    vars: vec![
+                        ClassVarDec::Field(Type::Int, vec!["a".to_string(), "b".to_string()]),
+                        ClassVarDec::Static(Type::Bool, vec!["c".to_string(), "d".to_string()])
+                    ],
+                    funs: vec![],
+                },
+                JackTokenizer::end()
+            ))
+        );
+
+        assert_eq!(
+            class(JackTokenizer::new("class Foo { constructor Foo new() {} }")),
+            Ok((
+                Class {
+                    name: "Foo".to_string(),
+                    vars: vec![],
+                    funs: vec![SubroutineDec {
+                        kind: SubroutineKind::Constructor,
+                        typ: Type::Class("Foo".to_string()),
+                        name: "new".to_string(),
+                        params: vec![],
+                        body: SubroutineBody(vec![], vec![])
+                    }],
+                },
                 JackTokenizer::end()
             ))
         );
