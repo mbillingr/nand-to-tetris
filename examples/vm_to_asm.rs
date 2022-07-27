@@ -6,7 +6,6 @@ use nand_to_tetris::chapter08_vm::translator::CodeGenerator;
 use nand_to_tetris::file_utils::file_or_files_in_dir;
 use std::env;
 use std::fs;
-use std::path::PathBuf;
 
 fn main() -> Result<(), String> {
     let mut args: Vec<_> = env::args().collect();

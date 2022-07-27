@@ -1,0 +1,9 @@
+/** Prints "Hello, World!" */
+class Main {
+    static int bla, blubb;
+    function void main() {
+        do Output.printString("Hello, World!");
+        do Output.println();  // new line
+        return;
+    }
+}

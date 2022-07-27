@@ -1,25 +1,23 @@
-use crate::chapter10_compiler::tokenizer::{JackTokenizer, Keyword as KW, Keyword, Token};
-use minifb::Key::K;
-use std::ops::BitOr;
-use std::process::Output;
+use crate::chapter10_compiler::tokenizer::{JackTokenizer, Keyword, Token};
+use std::fmt::Formatter;
 
-type ParseResult<'s, T> = Result<(T, JackTokenizer<'s>), JackTokenizer<'s>>;
+pub type ParseResult<'s, T> = Result<(T, JackTokenizer<'s>), JackTokenizer<'s>>;
 
 #[derive(Debug, Eq, PartialEq)]
-struct Class {
-    name: String,
-    vars: Vec<ClassVarDec>,
-    funs: Vec<SubroutineDec>,
+pub struct Class {
+    pub name: String,
+    pub vars: Vec<ClassVarDec>,
+    pub funs: Vec<SubroutineDec>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum ClassVarDec {
+pub enum ClassVarDec {
     Static(Type, Vec<String>),
     Field(Type, Vec<String>),
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct SubroutineDec {
+pub struct SubroutineDec {
     kind: SubroutineKind,
     typ: Type,
     name: String,
@@ -28,32 +26,20 @@ struct SubroutineDec {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum SubroutineKind {
+pub enum SubroutineKind {
     Function,
     Constructor,
     Method,
 }
 
 #[derive(Debug, Eq, PartialEq)]
-struct SubroutineBody(Vec<VarDec>, Vec<Statement>);
-
-impl SubroutineBody {
-    fn new(vars: Vec<VarDec>, stmts: Vec<Statement>) -> Self {
-        SubroutineBody(vars, stmts)
-    }
-}
+pub struct SubroutineBody(Vec<VarDec>, Vec<Statement>);
 
 #[derive(Debug, Eq, PartialEq)]
-struct VarDec(Type, Vec<String>);
-
-impl VarDec {
-    fn new(typ: Type, vars: Vec<&str>) -> Self {
-        VarDec(typ, vars.into_iter().map(str::to_string).collect())
-    }
-}
+pub struct VarDec(Type, Vec<String>);
 
 #[derive(Debug, Eq, PartialEq)]
-enum Type {
+pub enum Type {
     Void,
     Int,
     Char,
@@ -61,8 +47,20 @@ enum Type {
     Class(String),
 }
 
+impl std::fmt::Display for Type {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Void => write!(f, "void"),
+            Type::Int => write!(f, "int"),
+            Type::Char => write!(f, "char"),
+            Type::Bool => write!(f, "bool"),
+            Type::Class(cls) => write!(f, "{}", cls),
+        }
+    }
+}
+
 #[derive(Debug, Eq, PartialEq)]
-enum Statement {
+pub enum Statement {
     Let(String, Option<Expression>, Expression),
     If(Expression, Vec<Statement>, Vec<Statement>),
     While(Expression, Vec<Statement>),
@@ -93,7 +91,7 @@ impl Statement {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum Expression {
+pub enum Expression {
     Term(Term),
     Op(Term, char, Box<Expression>),
 }
@@ -116,7 +114,7 @@ impl Expression {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum Term {
+pub enum Term {
     Null,
     True,
     False,
@@ -134,10 +132,6 @@ enum Term {
 impl Term {
     fn integer(x: u16) -> Self {
         Self::Integer(x)
-    }
-
-    fn string(s: impl ToString) -> Self {
-        Self::String(s.to_string())
     }
 
     fn variable(name: impl ToString) -> Self {
@@ -198,7 +192,7 @@ impl From<u16> for Term {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-enum SubroutineCall {
+pub enum SubroutineCall {
     FunctionCall(String, Vec<Expression>),
     MethodCall(String, String, Vec<Expression>),
 }
@@ -278,7 +272,7 @@ where
 
 macro_rules! parser {
     ($lhs:ident: $t:ty = $($rhs:tt)+) => {
-        fn $lhs(lexer: JackTokenizer) -> ParseResult<$t> {
+        pub fn $lhs(lexer: JackTokenizer) -> ParseResult<$t> {
             parser!(@parse lexer, $($rhs)+)
         }
     };
@@ -528,21 +522,15 @@ fn consume_symbol(
     Err(lexer)
 }
 
-fn consume_keyword(
-    lexer: JackTokenizer,
-    expected: Keyword,
-) -> Result<JackTokenizer, JackTokenizer> {
-    if let Token::Keyword(kw) = lexer.current_token {
-        if kw == expected {
-            return Ok(lexer.advance());
-        }
-    }
-    Err(lexer)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl VarDec {
+        fn new(typ: Type, vars: Vec<&str>) -> Self {
+            VarDec(typ, vars.into_iter().map(str::to_string).collect())
+        }
+    }
 
     #[test]
     fn parse_term_integer() {
@@ -556,7 +544,7 @@ mod tests {
     fn parse_term_string() {
         assert_eq!(
             term(JackTokenizer::new("\"0\"")),
-            Ok((Term::string("0"), JackTokenizer::end()))
+            Ok((Term::String("0".to_string()), JackTokenizer::end()))
         );
     }
 
@@ -858,13 +846,13 @@ mod tests {
     fn parse_subroutine_body() {
         assert_eq!(
             subroutine_body(JackTokenizer::new("{}")),
-            Ok((SubroutineBody::new(vec![], vec![]), JackTokenizer::end()))
+            Ok((SubroutineBody(vec![], vec![]), JackTokenizer::end()))
         );
 
         assert_eq!(
             subroutine_body(JackTokenizer::new("{return;}")),
             Ok((
-                SubroutineBody::new(vec![], vec![Statement::Return(None)]),
+                SubroutineBody(vec![], vec![Statement::Return(None)]),
                 JackTokenizer::end()
             ))
         );
@@ -872,7 +860,7 @@ mod tests {
         assert_eq!(
             subroutine_body(JackTokenizer::new("{let x=0; return;}")),
             Ok((
-                SubroutineBody::new(
+                SubroutineBody(
                     vec![],
                     vec![Statement::let_("x", None, 0), Statement::Return(None)]
                 ),
@@ -883,7 +871,7 @@ mod tests {
         assert_eq!(
             subroutine_body(JackTokenizer::new("{var int x;}")),
             Ok((
-                SubroutineBody::new(vec![VarDec::new(Type::Int, vec!["x"])], vec![]),
+                SubroutineBody(vec![VarDec::new(Type::Int, vec!["x"])], vec![]),
                 JackTokenizer::end()
             ))
         );

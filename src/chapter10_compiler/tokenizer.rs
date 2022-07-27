@@ -36,8 +36,39 @@ impl<'s> JackTokenizer<'s> {
     }
 
     fn skip_whitespace(self) -> Self {
+        let mut source = self.source;
+        loop {
+            if source
+                .chars()
+                .next()
+                .map(char::is_whitespace)
+                .unwrap_or(false)
+            {
+                source = source.trim_start();
+                continue;
+            }
+
+            if source.starts_with("/*") {
+                match source.split_once("*/") {
+                    Some((_, after)) => source = after,
+                    None => source = "",
+                }
+                continue;
+            }
+
+            if source.starts_with("//") {
+                match source.split_once("\n") {
+                    Some((_, after)) => source = after,
+                    None => source = "",
+                }
+                continue;
+            }
+
+            break;
+        }
+
         JackTokenizer {
-            source: self.source.trim_start(),
+            source,
             current_token: self.current_token,
         }
     }
