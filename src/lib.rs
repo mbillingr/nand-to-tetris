@@ -9,6 +9,7 @@ pub mod chapter07_vm;
 pub mod chapter08_vm;
 pub mod chapter10_compiler;
 pub mod computer_emulator;
+pub mod file_utils;
 
 #[cfg(test)]
 mod tests {

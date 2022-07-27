@@ -3,6 +3,7 @@ Read vm code from a file or directory (multiple .vm files)
 and write unoptimized assembly code to stdout.
 **/
 use nand_to_tetris::chapter08_vm::translator::CodeGenerator;
+use nand_to_tetris::file_utils::file_or_files_in_dir;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -15,27 +16,7 @@ fn main() -> Result<(), String> {
     }
     let path = args.pop().unwrap();
 
-    let mut input_files = vec![];
-    if fs::metadata(&path)
-        .map_err(|e| e.to_string() + ": " + &path)?
-        .is_file()
-    {
-        input_files.push(PathBuf::from(path));
-    } else {
-        for path in fs::read_dir(path)
-            .unwrap()
-            .map(|p| p.unwrap().path())
-            .filter(|p| {
-                p.extension()
-                    .and_then(|ext| ext.to_str())
-                    .map(|ext| ext.to_lowercase())
-                    .map(|ext| ext == "vm")
-                    .unwrap_or(false)
-            })
-        {
-            input_files.push(path);
-        }
-    }
+    let input_files = file_or_files_in_dir(&path, "vm")?;
 
     let mut code_gen = CodeGenerator::new("VM");
     println!("{}", code_gen.gen_bootstrap());
