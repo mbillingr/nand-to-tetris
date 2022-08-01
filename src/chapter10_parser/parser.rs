@@ -1,5 +1,6 @@
 use crate::chapter10_parser::tokenizer::{JackTokenizer, Keyword, Token};
 use std::fmt::Formatter;
+use std::sync::Arc;
 
 pub type ParseResult<'s, T> = Result<(T, JackTokenizer<'s>), JackTokenizer<'s>>;
 
@@ -38,13 +39,13 @@ pub struct SubroutineBody(Vec<VarDec>, Vec<Statement>);
 #[derive(Debug, Eq, PartialEq)]
 pub struct VarDec(Type, Vec<String>);
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Type {
     Void,
     Int,
     Char,
     Bool,
-    Class(String),
+    Class(Arc<String>),
 }
 
 impl std::fmt::Display for Type {
@@ -353,7 +354,7 @@ parser! {
     type_: Type = ("int" => Type::Int)
                 | ("char" => Type::Char)
                 | ("bool" => Type::Bool)
-                | (cls @ identifier => Type::Class(cls.to_string()))
+                | (cls @ identifier => Type::Class(Arc::new(cls.to_string())))
 }
 
 parser! {
@@ -822,7 +823,10 @@ mod tests {
 
         assert_eq!(
             type_(JackTokenizer::new("Custom")),
-            Ok((Type::Class("Custom".to_string()), JackTokenizer::end()))
+            Ok((
+                Type::Class(Arc::new("Custom".to_string())),
+                JackTokenizer::end()
+            ))
         );
     }
 
@@ -1034,7 +1038,7 @@ mod tests {
                     vars: vec![],
                     funs: vec![SubroutineDec {
                         kind: SubroutineKind::Constructor,
-                        typ: Type::Class("Foo".to_string()),
+                        typ: Type::Class(Arc::new("Foo".to_string())),
                         name: "new".to_string(),
                         params: vec![],
                         body: SubroutineBody(vec![], vec![])
