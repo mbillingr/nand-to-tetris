@@ -1,4 +1,4 @@
-use crate::chapter10_compiler::tokenizer::{JackTokenizer, Keyword, Token};
+use crate::chapter10_parser::tokenizer::{JackTokenizer, Keyword, Token};
 use std::fmt::Formatter;
 
 pub type ParseResult<'s, T> = Result<(T, JackTokenizer<'s>), JackTokenizer<'s>>;
