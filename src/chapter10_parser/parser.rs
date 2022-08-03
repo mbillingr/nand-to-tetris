@@ -135,6 +135,10 @@ impl Term {
         Self::Integer(x)
     }
 
+    pub fn string(s: impl ToString) -> Self {
+        Self::String(s.to_string())
+    }
+
     fn variable(name: impl ToString) -> Self {
         Self::Variable(name.to_string())
     }
