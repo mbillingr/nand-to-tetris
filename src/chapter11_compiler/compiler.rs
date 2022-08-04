@@ -71,11 +71,18 @@ impl<'s> Compiler<'s> {
                     None => return Err(format!("Undefined variable: {}", name)),
                 }
             }
+            Term::ArrayIndex(_, _) => todo!(),
+            Term::Expression(_) => todo!(),
             Term::Neg(term) => {
                 self.compile_term(*term);
                 self.code.push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Neg)));
             }
-            _ => todo!(),
+            Term::Not(term) => {
+                self.compile_term(*term);
+                self.code.push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Not)));
+            }
+
+            Term::Call(_) => todo!(),
         }
         Ok(())
     }
@@ -95,7 +102,7 @@ impl From<&VarKind> for Segment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chapter07_vm::parser::ArithmeticCmd::Neg;
+    use crate::chapter07_vm::parser::ArithmeticCmd::{Neg, Not};
     use crate::chapter07_vm::parser::Command::{Arithmetic, Push};
     use crate::chapter07_vm::parser::Segment::{Argument, Constant, Local, Static, This};
     use crate::chapter08_vm::parser::Command::{Call, Stack};
@@ -135,6 +142,7 @@ mod tests {
             Stack(Push(Constant, 126)), Call("String.appendChar", 1),
         ];
         compile_neg: Term::neg(Term::integer(2)) => [Stack(Push(Constant, 2)), Stack(Arithmetic(Neg))];
+        compile_not: Term::not(Term::False) => [Stack(Push(Constant, 0)), Stack(Arithmetic(Not))];
     }
 
     #[test]
