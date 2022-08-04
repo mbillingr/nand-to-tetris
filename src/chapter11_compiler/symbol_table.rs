@@ -13,12 +13,12 @@ pub enum VarKind {
 pub struct Entry<'s> {
     pub typ: Type<'s>,
     pub kind: VarKind,
-    pub index: usize,
+    pub index: u16,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct SymbolTable<'s> {
-    counts: HashMap<VarKind, usize>,
+    counts: HashMap<VarKind, u16>,
     table: HashMap<&'s str, Entry<'s>>,
 }
 
@@ -52,7 +52,7 @@ impl<'s> SymbolTable<'s> {
         self.table.insert(name, Entry { typ, kind, index });
     }
 
-    pub fn count(&self, kind: VarKind) -> usize {
+    pub fn count(&self, kind: VarKind) -> u16 {
         self.counts[&kind]
     }
 
