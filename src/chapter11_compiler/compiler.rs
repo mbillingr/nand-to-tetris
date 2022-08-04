@@ -16,7 +16,9 @@ impl<'s> Compiler<'s> {
         &self.code
     }
 
-    fn compile_term(&mut self, term: Term) {
+    //fn define_local(&mut self, name: &'s str)
+
+    fn compile_term(&mut self, term: Term) -> Result<(), String> {
         match term {
             Term::Null | Term::False => self.code.push(Command::Stack(StackCmd::Push(Constant, 0))),
             Term::True => self.code.extend([
@@ -36,8 +38,10 @@ impl<'s> Compiler<'s> {
                     self.code.push(Command::Call("String.appendChar", 1));
                 }
             }
+            Term::Variable(name) => return Err(format!("Undefined variable: {}", name)),
             _ => todo!(),
         }
+        Ok(())
     }
 }
 
@@ -48,6 +52,7 @@ mod tests {
     use crate::chapter07_vm::parser::Command::{Arithmetic, Push};
     use crate::chapter07_vm::parser::Segment::Constant;
     use crate::chapter08_vm::parser::Command::{Call, Stack};
+    use crate::chapter10_parser::parser::Type;
 
     macro_rules! term_tests {
         ($($name:ident: $term:expr => $expected:expr;)*) => {
@@ -55,7 +60,7 @@ mod tests {
                 #[test]
                 fn $name() {
                     let mut compiler = Compiler::new();
-                    compiler.compile_term($term);
+                    compiler.compile_term($term).unwrap();
                     assert_eq!(compiler.code(), $expected);
                 }
             )*
@@ -69,9 +74,9 @@ mod tests {
         compile_this: Term::This => [Stack(Push(Pointer, 0))];
         compile_int0: Term::Integer(0) => [Stack(Push(Constant, 0))];
         compile_int1: Term::Integer(1) => [Stack(Push(Constant, 1))];
-        complise_str0: Term::string("") => [Stack(Push(Constant, 0)), Call("String.new", 1)];
-        complise_str1: Term::string("a") => [Stack(Push(Constant, 1)), Call("String.new", 1), Stack(Push(Constant, 97)), Call("String.appendChar", 1)];
-        complise_strx: Term::string("!*7=A_a~") => [
+        compile_str0: Term::string("") => [Stack(Push(Constant, 0)), Call("String.new", 1)];
+        compile_str1: Term::string("a") => [Stack(Push(Constant, 1)), Call("String.new", 1), Stack(Push(Constant, 97)), Call("String.appendChar", 1)];
+        compile_strx: Term::string("!*7=A_a~") => [
             Stack(Push(Constant, 8)), Call("String.new", 1),
             Stack(Push(Constant, 33)), Call("String.appendChar", 1),
             Stack(Push(Constant, 42)), Call("String.appendChar", 1),
@@ -83,4 +88,19 @@ mod tests {
             Stack(Push(Constant, 126)), Call("String.appendChar", 1),
         ];
     }
+
+    #[test]
+    fn compile_undefined_variable() {
+        let mut compiler = Compiler::new();
+        let err = compiler.compile_term(Term::variable("foo"));
+        assert_eq!(err, Err("Undefined variable: foo".to_string()));
+    }
+
+    /*#[test]
+    fn compile_local_variable() {
+        let mut compiler = Compiler::new();
+        compiler.define_local("foo", Type::Int);
+        compiler.compile_term(Term::variable("foo")).unwrap();
+        assert_eq!(compiler.code(), []);
+    }*/
 }

@@ -1,29 +1,28 @@
 use crate::chapter10_parser::tokenizer::{JackTokenizer, Keyword, Token};
 use std::fmt::Formatter;
-use std::sync::Arc;
 
 pub type ParseResult<'s, T> = Result<(T, JackTokenizer<'s>), JackTokenizer<'s>>;
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct Class {
-    pub name: String,
-    pub vars: Vec<ClassVarDec>,
-    pub funs: Vec<SubroutineDec>,
+pub struct Class<'s> {
+    pub name: &'s str,
+    pub vars: Vec<ClassVarDec<'s>>,
+    pub funs: Vec<SubroutineDec<'s>>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum ClassVarDec {
-    Static(Type, Vec<String>),
-    Field(Type, Vec<String>),
+pub enum ClassVarDec<'s> {
+    Static(Type<'s>, Vec<&'s str>),
+    Field(Type<'s>, Vec<&'s str>),
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct SubroutineDec {
+pub struct SubroutineDec<'s> {
     kind: SubroutineKind,
-    typ: Type,
-    name: String,
-    params: Vec<(Type, String)>,
-    body: SubroutineBody,
+    typ: Type<'s>,
+    name: &'s str,
+    params: Vec<(Type<'s>, &'s str)>,
+    body: SubroutineBody<'s>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -34,21 +33,21 @@ pub enum SubroutineKind {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct SubroutineBody(Vec<VarDec>, Vec<Statement>);
+pub struct SubroutineBody<'s>(Vec<VarDec<'s>>, Vec<Statement<'s>>);
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct VarDec(Type, Vec<String>);
+pub struct VarDec<'s>(Type<'s>, Vec<&'s str>);
 
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Type {
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum Type<'s> {
     Void,
     Int,
     Char,
     Bool,
-    Class(Arc<String>),
+    Class(&'s str),
 }
 
-impl std::fmt::Display for Type {
+impl std::fmt::Display for Type<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Type::Void => write!(f, "void"),
@@ -61,110 +60,110 @@ impl std::fmt::Display for Type {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum Statement {
-    Let(String, Option<Expression>, Expression),
-    If(Expression, Vec<Statement>, Vec<Statement>),
-    While(Expression, Vec<Statement>),
-    Do(SubroutineCall),
-    Return(Option<Expression>),
+pub enum Statement<'s> {
+    Let(String, Option<Expression<'s>>, Expression<'s>),
+    If(Expression<'s>, Vec<Statement<'s>>, Vec<Statement<'s>>),
+    While(Expression<'s>, Vec<Statement<'s>>),
+    Do(SubroutineCall<'s>),
+    Return(Option<Expression<'s>>),
 }
 
-impl Statement {
+impl<'s> Statement<'s> {
     fn let_(
         varname: impl ToString,
-        array_index: Option<Expression>,
-        value: impl Into<Expression>,
+        array_index: Option<Expression<'s>>,
+        value: impl Into<Expression<'s>>,
     ) -> Self {
         Self::Let(varname.to_string(), array_index, value.into())
     }
 
     fn if_(
-        condition: impl Into<Expression>,
-        consequence: Vec<Statement>,
-        alternative: Vec<Statement>,
+        condition: impl Into<Expression<'s>>,
+        consequence: Vec<Statement<'s>>,
+        alternative: Vec<Statement<'s>>,
     ) -> Self {
         Self::If(condition.into(), consequence, alternative)
     }
 
-    fn while_(condition: impl Into<Expression>, body: Vec<Statement>) -> Self {
+    fn while_(condition: impl Into<Expression<'s>>, body: Vec<Statement<'s>>) -> Self {
         Self::While(condition.into(), body)
     }
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum Expression {
-    Term(Term),
-    Op(Term, char, Box<Expression>),
+pub enum Expression<'s> {
+    Term(Term<'s>),
+    Op(Term<'s>, char, Box<Expression<'s>>),
 }
 
-impl Expression {
+impl<'s> Expression<'s> {
     fn integer(x: u16) -> Self {
         Self::Term(Term::integer(x))
     }
 
-    fn term(x: impl Into<Term>) -> Self {
+    fn term(x: impl Into<Term<'s>>) -> Self {
         match x.into() {
             Term::Expression(x) => *x,
             t => Expression::Term(t),
         }
     }
 
-    fn op(op: char, a: impl Into<Term>, b: impl Into<Box<Expression>>) -> Self {
+    fn op(op: char, a: impl Into<Term<'s>>, b: impl Into<Box<Expression<'s>>>) -> Self {
         Self::Op(a.into(), op, b.into())
     }
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum Term {
+pub enum Term<'s> {
     Null,
     True,
     False,
     This,
     Integer(u16),
-    String(String),
-    Variable(String),
-    ArrayIndex(String, Box<Expression>),
-    Expression(Box<Expression>),
-    Neg(Box<Term>),
-    Not(Box<Term>),
-    Call(SubroutineCall),
+    String(&'s str),
+    Variable(&'s str),
+    ArrayIndex(&'s str, Box<Expression<'s>>),
+    Expression(Box<Expression<'s>>),
+    Neg(Box<Term<'s>>),
+    Not(Box<Term<'s>>),
+    Call(SubroutineCall<'s>),
 }
 
-impl Term {
+impl<'s> Term<'s> {
     fn integer(x: u16) -> Self {
         Self::Integer(x)
     }
 
-    pub fn string(s: impl ToString) -> Self {
-        Self::String(s.to_string())
+    pub fn string(s: &'s str) -> Self {
+        Self::String(s)
     }
 
-    fn variable(name: impl ToString) -> Self {
-        Self::Variable(name.to_string())
+    pub fn variable(name: &'s str) -> Self {
+        Self::Variable(name)
     }
 
-    fn array_index(name: impl ToString, idx: Expression) -> Self {
-        Self::ArrayIndex(name.to_string(), Box::new(idx))
+    fn array_index(name: &'s str, idx: Expression<'s>) -> Self {
+        Self::ArrayIndex(name, Box::new(idx))
     }
 
-    fn expression(x: impl Into<Expression>) -> Self {
+    fn expression(x: impl Into<Expression<'s>>) -> Self {
         match x.into() {
             Expression::Term(t) => t,
             x => Term::Expression(Box::new(x)),
         }
     }
 
-    fn neg(x: Term) -> Self {
+    fn neg(x: Term<'s>) -> Self {
         Self::Neg(Box::new(x))
     }
 
-    fn not(x: Term) -> Self {
+    fn not(x: Term<'s>) -> Self {
         Self::Not(Box::new(x))
     }
 }
 
-impl From<Term> for Box<Expression> {
-    fn from(t: Term) -> Self {
+impl<'s> From<Term<'s>> for Box<Expression<'s>> {
+    fn from(t: Term<'s>) -> Self {
         match t {
             Term::Expression(x) => x,
             _ => Box::new(Expression::Term(t)),
@@ -172,43 +171,43 @@ impl From<Term> for Box<Expression> {
     }
 }
 
-impl From<Term> for Expression {
-    fn from(t: Term) -> Self {
+impl<'s> From<Term<'s>> for Expression<'s> {
+    fn from(t: Term<'s>) -> Self {
         Self::term(t)
     }
 }
 
-impl From<Expression> for Term {
-    fn from(x: Expression) -> Self {
+impl<'s> From<Expression<'s>> for Term<'s> {
+    fn from(x: Expression<'s>) -> Self {
         Self::expression(x)
     }
 }
 
-impl From<u16> for Expression {
+impl From<u16> for Expression<'_> {
     fn from(x: u16) -> Self {
         Self::integer(x)
     }
 }
 
-impl From<u16> for Term {
+impl From<u16> for Term<'_> {
     fn from(x: u16) -> Self {
         Self::integer(x)
     }
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum SubroutineCall {
-    FunctionCall(String, Vec<Expression>),
-    MethodCall(String, String, Vec<Expression>),
+pub enum SubroutineCall<'s> {
+    FunctionCall(&'s str, Vec<Expression<'s>>),
+    MethodCall(&'s str, &'s str, Vec<Expression<'s>>),
 }
 
-impl SubroutineCall {
-    fn function_call(func: impl ToString, args: Vec<Expression>) -> Self {
-        Self::FunctionCall(func.to_string(), args)
+impl<'s> SubroutineCall<'s> {
+    fn function_call(func: &'s str, args: Vec<Expression<'s>>) -> Self {
+        Self::FunctionCall(func, args)
     }
 
-    fn method_call(obj: impl ToString, func: impl ToString, args: Vec<Expression>) -> Self {
-        Self::MethodCall(obj.to_string(), func.to_string(), args)
+    fn method_call(obj: &'s str, func: &'s str, args: Vec<Expression<'s>>) -> Self {
+        Self::MethodCall(obj, func, args)
     }
 }
 
@@ -358,7 +357,7 @@ parser! {
     type_: Type = ("int" => Type::Int)
                 | ("char" => Type::Char)
                 | ("bool" => Type::Bool)
-                | (cls @ identifier => Type::Class(Arc::new(cls.to_string())))
+                | (cls @ identifier => Type::Class(cls))
 }
 
 parser! {
@@ -366,7 +365,7 @@ parser! {
 }
 
 parser! {
-    class_name : String = (name @ identifier => name.to_string())
+    class_name : &str = (name @ identifier => name)
 }
 
 parser! {
@@ -386,9 +385,9 @@ parser! {
 }
 
 parser! {
-    parameter_list : Vec<(Type, String)> = (t0@type_ n0@var_name pars @ (*(',' t@type_ n@var_name => (t, n))) => cons((t0, n0), pars))
-                                         | (par @ (t@type_ n@var_name => (t,n)) => vec![par])
-                                         | ( => vec![])
+    parameter_list : Vec<(Type, &str)> = (t0@type_ n0@var_name pars @ (*(',' t@type_ n@var_name => (t, n))) => cons((t0, n0), pars))
+                                       | (par @ (t@type_ n@var_name => (t,n)) => vec![par])
+                                       | ( => vec![])
 }
 
 parser! {
@@ -400,11 +399,11 @@ parser! {
 }
 
 parser! {
-    subroutine_name : String = (name @ identifier => name.to_string())
+    subroutine_name : &str = (name @ identifier => name)
 }
 
 parser! {
-    var_name : String = (name @ identifier => name.to_string())
+    var_name : &str = (name @ identifier => name)
 }
 
 parser! {
@@ -508,9 +507,9 @@ fn integer_constant(lexer: JackTokenizer) -> ParseResult<u16> {
     }
 }
 
-fn string_constant(lexer: JackTokenizer) -> ParseResult<String> {
+fn string_constant(lexer: JackTokenizer) -> ParseResult<&str> {
     match lexer.current_token {
-        Token::StringConstant(x) => Ok((x.to_string(), lexer.advance())),
+        Token::StringConstant(x) => Ok((x, lexer.advance())),
         _ => Err(lexer),
     }
 }
@@ -531,9 +530,9 @@ fn consume_symbol(
 mod tests {
     use super::*;
 
-    impl VarDec {
-        fn new(typ: Type, vars: Vec<&str>) -> Self {
-            VarDec(typ, vars.into_iter().map(str::to_string).collect())
+    impl<'s> VarDec<'s> {
+        fn new(typ: Type<'s>, vars: Vec<&'s str>) -> Self {
+            VarDec(typ, vars)
         }
     }
 
@@ -549,7 +548,7 @@ mod tests {
     fn parse_term_string() {
         assert_eq!(
             term(JackTokenizer::new("\"0\"")),
-            Ok((Term::String("0".to_string()), JackTokenizer::end()))
+            Ok((Term::String("0"), JackTokenizer::end()))
         );
     }
 
@@ -617,7 +616,7 @@ mod tests {
         assert_eq!(
             subroutine_call(JackTokenizer::new("foo()")),
             Ok((
-                SubroutineCall::FunctionCall("foo".to_string(), vec![]),
+                SubroutineCall::FunctionCall("foo", vec![]),
                 JackTokenizer::end()
             ))
         );
@@ -625,7 +624,7 @@ mod tests {
         assert_eq!(
             subroutine_call(JackTokenizer::new("foo.bar()")),
             Ok((
-                SubroutineCall::MethodCall("foo".to_string(), "bar".to_string(), vec![]),
+                SubroutineCall::MethodCall("foo", "bar", vec![]),
                 JackTokenizer::end()
             ))
         );
@@ -827,10 +826,7 @@ mod tests {
 
         assert_eq!(
             type_(JackTokenizer::new("Custom")),
-            Ok((
-                Type::Class(Arc::new("Custom".to_string())),
-                JackTokenizer::end()
-            ))
+            Ok((Type::Class("Custom"), JackTokenizer::end()))
         );
     }
 
@@ -894,13 +890,13 @@ mod tests {
 
         assert_eq!(
             parameter_list(JackTokenizer::new("int x")),
-            Ok((vec![(Type::Int, "x".to_string())], JackTokenizer::end()))
+            Ok((vec![(Type::Int, "x")], JackTokenizer::end()))
         );
 
         assert_eq!(
             parameter_list(JackTokenizer::new("int x, bool y")),
             Ok((
-                vec![(Type::Int, "x".to_string()), (Type::Bool, "y".to_string())],
+                vec![(Type::Int, "x"), (Type::Bool, "y")],
                 JackTokenizer::end()
             ))
         );
@@ -914,7 +910,7 @@ mod tests {
                 SubroutineDec {
                     kind: SubroutineKind::Function,
                     typ: Type::Void,
-                    name: "foo".to_string(),
+                    name: "foo",
                     params: vec![],
                     body: SubroutineBody(vec![], vec![])
                 },
@@ -930,12 +926,8 @@ mod tests {
                 SubroutineDec {
                     kind: SubroutineKind::Constructor,
                     typ: Type::Void,
-                    name: "foo".to_string(),
-                    params: vec![
-                        (Type::Int, "x".to_string()),
-                        (Type::Char, "y".to_string()),
-                        (Type::Bool, "z".to_string())
-                    ],
+                    name: "foo",
+                    params: vec![(Type::Int, "x"), (Type::Char, "y"), (Type::Bool, "z")],
                     body: SubroutineBody(vec![], vec![])
                 },
                 JackTokenizer::end()
@@ -950,7 +942,7 @@ mod tests {
                 SubroutineDec {
                     kind: SubroutineKind::Method,
                     typ: Type::Int,
-                    name: "foo".to_string(),
+                    name: "foo",
                     params: vec![],
                     body: SubroutineBody(
                         vec![VarDec::new(Type::Int, vec!["x"])],
@@ -970,7 +962,7 @@ mod tests {
         assert_eq!(
             classvar_dec(JackTokenizer::new("static int foo;")),
             Ok((
-                ClassVarDec::Static(Type::Int, vec!["foo".to_string()]),
+                ClassVarDec::Static(Type::Int, vec!["foo"]),
                 JackTokenizer::end()
             ))
         );
@@ -978,14 +970,14 @@ mod tests {
         assert_eq!(
             classvar_dec(JackTokenizer::new("field int bar;")),
             Ok((
-                ClassVarDec::Field(Type::Int, vec!["bar".to_string()]),
+                ClassVarDec::Field(Type::Int, vec!["bar"]),
                 JackTokenizer::end()
             ))
         );
         assert_eq!(
             classvar_dec(JackTokenizer::new("static int foo, bar;")),
             Ok((
-                ClassVarDec::Static(Type::Int, vec!["foo".to_string(), "bar".to_string()]),
+                ClassVarDec::Static(Type::Int, vec!["foo", "bar"]),
                 JackTokenizer::end()
             ))
         );
@@ -997,7 +989,7 @@ mod tests {
             class(JackTokenizer::new("class Foo { }")),
             Ok((
                 Class {
-                    name: "Foo".to_string(),
+                    name: "Foo",
                     vars: vec![],
                     funs: vec![],
                 },
@@ -1009,8 +1001,8 @@ mod tests {
             class(JackTokenizer::new("class Bar { field int baz; }")),
             Ok((
                 Class {
-                    name: "Bar".to_string(),
-                    vars: vec![ClassVarDec::Field(Type::Int, vec!["baz".to_string()])],
+                    name: "Bar",
+                    vars: vec![ClassVarDec::Field(Type::Int, vec!["baz"])],
                     funs: vec![],
                 },
                 JackTokenizer::end()
@@ -1023,10 +1015,10 @@ mod tests {
             )),
             Ok((
                 Class {
-                    name: "Baz".to_string(),
+                    name: "Baz",
                     vars: vec![
-                        ClassVarDec::Field(Type::Int, vec!["a".to_string(), "b".to_string()]),
-                        ClassVarDec::Static(Type::Bool, vec!["c".to_string(), "d".to_string()])
+                        ClassVarDec::Field(Type::Int, vec!["a", "b"]),
+                        ClassVarDec::Static(Type::Bool, vec!["c", "d"])
                     ],
                     funs: vec![],
                 },
@@ -1038,12 +1030,12 @@ mod tests {
             class(JackTokenizer::new("class Foo { constructor Foo new() {} }")),
             Ok((
                 Class {
-                    name: "Foo".to_string(),
+                    name: "Foo",
                     vars: vec![],
                     funs: vec![SubroutineDec {
                         kind: SubroutineKind::Constructor,
-                        typ: Type::Class(Arc::new("Foo".to_string())),
-                        name: "new".to_string(),
+                        typ: Type::Class("Foo"),
+                        name: "new",
                         params: vec![],
                         body: SubroutineBody(vec![], vec![])
                     }],

@@ -41,7 +41,7 @@ trait ToXml {
     fn xml_indent(&self, level: &str) -> String;
 }
 
-impl ToXml for parser::Class {
+impl ToXml for parser::Class<'_> {
     fn xml_indent(&self, level0: &str) -> String {
         let level1 = format!("{level0}    ");
         let mut out = format!(
@@ -62,7 +62,7 @@ impl ToXml for parser::Class {
     }
 }
 
-impl ToXml for parser::ClassVarDec {
+impl ToXml for parser::ClassVarDec<'_> {
     fn xml_indent(&self, level0: &str) -> String {
         let level1 = format!("{level0}    ");
         let mut out = format!("{level0}<classVarDec>\n",);
@@ -80,7 +80,7 @@ impl ToXml for parser::ClassVarDec {
     }
 }
 
-impl ToXml for parser::SubroutineDec {
+impl ToXml for parser::SubroutineDec<'_> {
     fn xml_indent(&self, level0: &str) -> String {
         let level1 = format!("{level0}    ");
         let mut out = format!("{level0}<subroutineDec>\n",);

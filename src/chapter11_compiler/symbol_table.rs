@@ -1,6 +1,5 @@
 use crate::chapter10_parser::parser::Type;
 use std::collections::HashMap;
-use std::sync::Arc;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum VarKind {
@@ -11,19 +10,19 @@ pub enum VarKind {
 }
 
 #[derive(Debug, PartialEq)]
-pub struct Entry {
-    pub typ: Type,
+pub struct Entry<'s> {
+    pub typ: Type<'s>,
     pub kind: VarKind,
     pub index: usize,
 }
 
 #[derive(Debug, PartialEq)]
-pub struct SymbolTable {
+pub struct SymbolTable<'s> {
     counts: HashMap<VarKind, usize>,
-    table: HashMap<String, Entry>,
+    table: HashMap<&'s str, Entry<'s>>,
 }
 
-impl SymbolTable {
+impl<'s> SymbolTable<'s> {
     pub fn new() -> Self {
         let mut counts = HashMap::with_capacity(4);
         counts.insert(VarKind::Static, 0);
@@ -43,8 +42,7 @@ impl SymbolTable {
         self.table.clear();
     }
 
-    pub fn define(&mut self, name: impl ToString, typ: Type, kind: VarKind) {
-        let name = name.to_string();
+    pub fn define(&mut self, name: &'s str, typ: Type<'s>, kind: VarKind) {
         assert!(!self.table.contains_key(&name));
 
         let cnt = self.counts.get_mut(&kind).unwrap();
