@@ -146,7 +146,7 @@ impl<'s> Term<'s> {
         Self::ArrayIndex(name, Box::new(idx))
     }
 
-    fn expression(x: impl Into<Expression<'s>>) -> Self {
+    pub fn expression(x: impl Into<Expression<'s>>) -> Self {
         match x.into() {
             Expression::Term(t) => t,
             x => Term::Expression(Box::new(x)),

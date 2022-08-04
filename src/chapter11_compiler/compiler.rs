@@ -83,21 +83,25 @@ impl<'s> Compiler<'s> {
                     .find(name)
                     .or_else(|| self.class_symbols.find(name));
                 match lookup {
-                    Some(symbol_table::Entry { typ, kind, index }) => self
+                    Some(symbol_table::Entry {
+                        typ: _,
+                        kind,
+                        index,
+                    }) => self
                         .code
                         .push(Command::Stack(StackCmd::Push(kind.into(), *index))),
                     None => return Err(format!("Undefined variable: {}", name)),
                 }
             }
             Term::ArrayIndex(_, _) => todo!(),
-            Term::Expression(_) => todo!(),
+            Term::Expression(expr) => return self.compile_expression(*expr),
             Term::Neg(term) => {
-                self.compile_term(*term);
+                self.compile_term(*term)?;
                 self.code
                     .push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Neg)));
             }
             Term::Not(term) => {
-                self.compile_term(*term);
+                self.compile_term(*term)?;
                 self.code
                     .push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Not)));
             }
@@ -176,6 +180,7 @@ mod tests {
             Stack(Push(Constant, 97)), Call("String.appendChar", 1),
             Stack(Push(Constant, 126)), Call("String.appendChar", 1),
         ];
+        compile_exp: Term::expression(Expression::op('+', 1, 2)) =>  [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Stack(Arithmetic(Add))];
         compile_neg: Term::neg(Term::integer(2)) => [Stack(Push(Constant, 2)), Stack(Arithmetic(Neg))];
         compile_not: Term::not(Term::False) => [Stack(Push(Constant, 0)), Stack(Arithmetic(Not))];
     }

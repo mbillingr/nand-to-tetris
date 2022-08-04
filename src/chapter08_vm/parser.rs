@@ -1,5 +1,5 @@
 use crate::chapter06_assembler::parser::FromStrNocopy;
-use crate::chapter07_vm::parser::{Command as StackCmd, Segment};
+use crate::chapter07_vm::parser::Command as StackCmd;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Eq, PartialEq)]
