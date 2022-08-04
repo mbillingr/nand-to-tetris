@@ -97,18 +97,18 @@ pub enum Expression<'s> {
 }
 
 impl<'s> Expression<'s> {
-    fn integer(x: u16) -> Self {
+    pub fn integer(x: u16) -> Self {
         Self::Term(Term::integer(x))
     }
 
-    fn term(x: impl Into<Term<'s>>) -> Self {
+    pub fn term(x: impl Into<Term<'s>>) -> Self {
         match x.into() {
             Term::Expression(x) => *x,
             t => Expression::Term(t),
         }
     }
 
-    fn op(op: char, a: impl Into<Term<'s>>, b: impl Into<Box<Expression<'s>>>) -> Self {
+    pub fn op(op: char, a: impl Into<Term<'s>>, b: impl Into<Box<Expression<'s>>>) -> Self {
         Self::Op(a.into(), op, b.into())
     }
 }
@@ -180,6 +180,12 @@ impl<'s> From<Term<'s>> for Expression<'s> {
 impl<'s> From<Expression<'s>> for Term<'s> {
     fn from(x: Expression<'s>) -> Self {
         Self::expression(x)
+    }
+}
+
+impl From<u16> for Box<Expression<'_>> {
+    fn from(x: u16) -> Self {
+        Box::new(Expression::integer(x))
     }
 }
 

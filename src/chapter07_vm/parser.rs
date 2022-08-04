@@ -44,6 +44,24 @@ impl Display for Command {
     }
 }
 
+impl Command {
+    pub fn try_from_char(ch: char) -> Option<Self> {
+        match ch {
+            '0' => Some(Command::Push(Segment::Constant, 0)),
+            '1' => Some(Command::Push(Segment::Constant, 1)),
+            '2' => Some(Command::Push(Segment::Constant, 2)),
+            '3' => Some(Command::Push(Segment::Constant, 3)),
+            '4' => Some(Command::Push(Segment::Constant, 4)),
+            '5' => Some(Command::Push(Segment::Constant, 5)),
+            '6' => Some(Command::Push(Segment::Constant, 6)),
+            '7' => Some(Command::Push(Segment::Constant, 7)),
+            '8' => Some(Command::Push(Segment::Constant, 8)),
+            '9' => Some(Command::Push(Segment::Constant, 9)),
+            _ => ArithmeticCmd::try_from_char(ch).map(Command::Arithmetic),
+        }
+    }
+}
+
 impl Display for ArithmeticCmd {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         use ArithmeticCmd::*;
@@ -57,6 +75,22 @@ impl Display for ArithmeticCmd {
             And => write!(f, "and"),
             Or => write!(f, "or"),
             Not => write!(f, "not"),
+        }
+    }
+}
+
+impl ArithmeticCmd {
+    pub fn try_from_char(ch: char) -> Option<Self> {
+        match ch {
+            '+' => Some(ArithmeticCmd::Add),
+            '-' => Some(ArithmeticCmd::Sub),
+            '=' => Some(ArithmeticCmd::Eq),
+            '>' => Some(ArithmeticCmd::Gt),
+            '<' => Some(ArithmeticCmd::Lt),
+            '&' => Some(ArithmeticCmd::And),
+            '|' => Some(ArithmeticCmd::Or),
+            '~' => Some(ArithmeticCmd::Not),
+            _ => None,
         }
     }
 }

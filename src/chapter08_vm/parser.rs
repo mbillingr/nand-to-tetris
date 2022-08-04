@@ -1,5 +1,5 @@
 use crate::chapter06_assembler::parser::FromStrNocopy;
-use crate::chapter07_vm::parser::Command as StackCmd;
+use crate::chapter07_vm::parser::{Command as StackCmd, Segment};
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Eq, PartialEq)]
@@ -47,6 +47,12 @@ impl Display for Command<'_> {
             Command::Return => write!(f, "return"),
             Command::Halt => write!(f, "halt"),
         }
+    }
+}
+
+impl Command<'_> {
+    pub fn try_from_char(ch: char) -> Option<Self> {
+        StackCmd::try_from_char(ch).map(Command::Stack)
     }
 }
 

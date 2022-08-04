@@ -1,7 +1,7 @@
 use crate::chapter07_vm::parser::Segment::{Constant, Pointer};
 use crate::chapter07_vm::parser::{ArithmeticCmd, Command as StackCmd, Segment};
 use crate::chapter08_vm::parser::Command;
-use crate::chapter10_parser::parser::{Term, Type};
+use crate::chapter10_parser::parser::{Expression, Term, Type};
 use crate::chapter11_compiler::symbol_table::{self, SymbolTable, VarKind};
 
 pub struct Compiler<'s> {
@@ -37,6 +37,24 @@ impl<'s> Compiler<'s> {
 
     fn define_field(&mut self, name: &'s str, typ: Type<'s>) {
         self.class_symbols.define(name, typ, VarKind::Field);
+    }
+
+    fn compile_expression(&mut self, expr: Expression) -> Result<(), String> {
+        match expr {
+            Expression::Term(term) => self.compile_term(term),
+            Expression::Op(a, op, b) => {
+                self.compile_term(a)?;
+                self.compile_expression(*b)?;
+                match op {
+                    '*' => self.code.push(Command::Call("Math.multiply", 2)),
+                    '/' => self.code.push(Command::Call("Math.divide", 2)),
+                    _ => self
+                        .code
+                        .push(Command::try_from_char(op).expect("invalid op")),
+                }
+                Ok(())
+            }
+        }
     }
 
     fn compile_term(&mut self, term: Term) -> Result<(), String> {
@@ -75,11 +93,13 @@ impl<'s> Compiler<'s> {
             Term::Expression(_) => todo!(),
             Term::Neg(term) => {
                 self.compile_term(*term);
-                self.code.push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Neg)));
+                self.code
+                    .push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Neg)));
             }
             Term::Not(term) => {
                 self.compile_term(*term);
-                self.code.push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Not)));
+                self.code
+                    .push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Not)));
             }
 
             Term::Call(_) => todo!(),
@@ -102,26 +122,41 @@ impl From<&VarKind> for Segment {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::chapter07_vm::parser::ArithmeticCmd::{Neg, Not};
-    use crate::chapter07_vm::parser::Command::{Arithmetic, Push};
-    use crate::chapter07_vm::parser::Segment::{Argument, Constant, Local, Static, This};
-    use crate::chapter08_vm::parser::Command::{Call, Stack};
-    use crate::chapter10_parser::parser::Type;
+    use crate::chapter07_vm::parser::ArithmeticCmd::*;
+    use crate::chapter07_vm::parser::Command::*;
+    use crate::chapter07_vm::parser::Segment::*;
+    use crate::chapter08_vm::parser::Command::*;
+    use crate::chapter10_parser::parser::{Expression, Type};
 
-    macro_rules! term_tests {
-        ($($name:ident: $term:expr => $expected:expr;)*) => {
+    macro_rules! compiler_tests {
+        ($f:ident: $($name:ident: $term:expr => $expected:expr;)*) => {
             $(
                 #[test]
                 fn $name() {
                     let mut compiler = Compiler::new();
-                    compiler.compile_term($term).unwrap();
+                    compiler.$f($term).unwrap();
                     assert_eq!(compiler.code(), $expected);
                 }
             )*
         };
     }
 
-    term_tests! {
+    compiler_tests! {
+        compile_expression:
+        compile_simple_expression: Expression::Term(Term::Null) => [Stack(Push(Constant, 0))];
+        compile_add: Expression::op('+', 1, 2) => [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Stack(Arithmetic(Add))];
+        compile_sub: Expression::op('-', 2, 1) => [Stack(Push(Constant, 2)), Stack(Push(Constant, 1)), Stack(Arithmetic(Sub))];
+        compile_mul: Expression::op('*', 2, 3) => [Stack(Push(Constant, 2)), Stack(Push(Constant, 3)), Call("Math.multiply", 2)];
+        compile_div: Expression::op('/', 4, 2) => [Stack(Push(Constant, 4)), Stack(Push(Constant, 2)), Call("Math.divide", 2)];
+        compile_and: Expression::op('&', 5, 3) => [Stack(Push(Constant, 5)), Stack(Push(Constant, 3)), Stack(Arithmetic(And))];
+        compile_or: Expression::op('|', 1, 2) => [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Stack(Arithmetic(Or))];
+        compile_less: Expression::op('<', 1, 2) => [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Stack(Arithmetic(Lt))];
+        compile_more: Expression::op('>', 1, 2) => [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Stack(Arithmetic(Gt))];
+        compile_equal: Expression::op('=', 0, 0) => [Stack(Push(Constant, 0)), Stack(Push(Constant, 0)), Stack(Arithmetic(Eq))];
+    }
+
+    compiler_tests! {
+        compile_term:
         compile_null: Term::Null => [Stack(Push(Constant, 0))];
         compile_true: Term::True => [Stack(Push(Constant, 1)), Stack(Arithmetic(Neg))];
         compile_false: Term::False => [Stack(Push(Constant, 0))];
