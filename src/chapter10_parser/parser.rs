@@ -130,7 +130,7 @@ pub enum Term<'s> {
 }
 
 impl<'s> Term<'s> {
-    fn integer(x: u16) -> Self {
+    pub fn integer(x: u16) -> Self {
         Self::Integer(x)
     }
 
@@ -153,11 +153,11 @@ impl<'s> Term<'s> {
         }
     }
 
-    fn neg(x: Term<'s>) -> Self {
+    pub fn neg(x: Term<'s>) -> Self {
         Self::Neg(Box::new(x))
     }
 
-    fn not(x: Term<'s>) -> Self {
+    pub fn not(x: Term<'s>) -> Self {
         Self::Not(Box::new(x))
     }
 }

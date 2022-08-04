@@ -71,6 +71,10 @@ impl<'s> Compiler<'s> {
                     None => return Err(format!("Undefined variable: {}", name)),
                 }
             }
+            Term::Neg(term) => {
+                self.compile_term(*term);
+                self.code.push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Neg)));
+            }
             _ => todo!(),
         }
         Ok(())
@@ -130,6 +134,7 @@ mod tests {
             Stack(Push(Constant, 97)), Call("String.appendChar", 1),
             Stack(Push(Constant, 126)), Call("String.appendChar", 1),
         ];
+        compile_neg: Term::neg(Term::integer(2)) => [Stack(Push(Constant, 2)), Stack(Arithmetic(Neg))];
     }
 
     #[test]
