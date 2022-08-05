@@ -1,8 +1,8 @@
 use crate::chapter07_vm::parser::Segment::{Constant, Pointer};
 use crate::chapter07_vm::parser::{ArithmeticCmd, Command as StackCmd, Segment};
 use crate::chapter08_vm::parser::Command;
-use crate::chapter10_parser::parser::{Expression, Term, Type};
-use crate::chapter11_compiler::symbol_table::{self, SymbolTable, VarKind};
+use crate::chapter10_parser::parser::{Expression, SubroutineCall, Term, Type};
+use crate::chapter11_compiler::symbol_table::{self, Entry, SymbolTable, VarKind};
 
 pub struct Compiler<'s> {
     code: Vec<Command<'s>>,
@@ -39,7 +39,7 @@ impl<'s> Compiler<'s> {
         self.class_symbols.define(name, typ, VarKind::Field);
     }
 
-    fn compile_expression(&mut self, expr: Expression) -> Result<(), String> {
+    fn compile_expression(&mut self, expr: Expression<'s>) -> Result<(), String> {
         match expr {
             Expression::Term(term) => self.compile_term(term),
             Expression::Op(a, op, b) => {
@@ -57,7 +57,7 @@ impl<'s> Compiler<'s> {
         }
     }
 
-    fn compile_term(&mut self, term: Term) -> Result<(), String> {
+    fn compile_term(&mut self, term: Term<'s>) -> Result<(), String> {
         match term {
             Term::Null | Term::False => self.code.push(Command::Stack(StackCmd::Push(Constant, 0))),
             Term::True => self.code.extend([
@@ -78,20 +78,13 @@ impl<'s> Compiler<'s> {
                 }
             }
             Term::Variable(name) => {
-                let lookup = self
-                    .function_symbols
-                    .find(name)
-                    .or_else(|| self.class_symbols.find(name));
-                match lookup {
-                    Some(symbol_table::Entry {
-                        typ: _,
-                        kind,
-                        index,
-                    }) => self
-                        .code
-                        .push(Command::Stack(StackCmd::Push(kind.into(), *index))),
-                    None => return Err(format!("Undefined variable: {}", name)),
-                }
+                let symbol_table::Entry {
+                    typ: _,
+                    kind,
+                    index,
+                } = self.lookup(name)?;
+                self.code
+                    .push(Command::Stack(StackCmd::Push(kind.into(), *index)));
             }
             Term::ArrayIndex(_, _) => todo!(),
             Term::Expression(expr) => return self.compile_expression(*expr),
@@ -106,7 +99,43 @@ impl<'s> Compiler<'s> {
                     .push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Not)));
             }
 
-            Term::Call(_) => todo!(),
+            Term::Call(SubroutineCall::FunctionCall(name, args)) => {
+                let n_args = args.len() as u16;
+                self.compile_args(args)?;
+                self.code.push(Command::Call(name, n_args));
+            }
+            Term::Call(SubroutineCall::MethodCall(obj, name, args)) => {
+                let n_args = 1 + args.len() as u16;
+                match self.lookup(obj)? {
+                    symbol_table::Entry {
+                        typ: Type::Class(cls),
+                        kind,
+                        index,
+                    } => {
+                        self.code
+                            .push(Command::Stack(StackCmd::Push(kind.into(), *index)));
+                        self.compile_args(args)?;
+                        self.code.push(Command::Call(name, n_args));
+                    }
+                    symbol_table::Entry { typ, .. } => {
+                        return Err(format!("Not an object: {:?}", typ))
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn lookup(&self, name: &str) -> Result<&Entry<'s>, String> {
+        self.function_symbols
+            .find(name)
+            .or_else(|| self.class_symbols.find(name))
+            .ok_or_else(|| format!("Undefined variable: {}", name))
+    }
+
+    fn compile_args(&mut self, args: Vec<Expression<'s>>) -> Result<(), String> {
+        for arg in args {
+            self.compile_expression(arg)?;
         }
         Ok(())
     }
@@ -130,7 +159,7 @@ mod tests {
     use crate::chapter07_vm::parser::Command::*;
     use crate::chapter07_vm::parser::Segment::*;
     use crate::chapter08_vm::parser::Command::*;
-    use crate::chapter10_parser::parser::{Expression, Type};
+    use crate::chapter10_parser::parser::{Expression, SubroutineCall, Type};
 
     macro_rules! compiler_tests {
         ($f:ident: $($name:ident: $term:expr => $expected:expr;)*) => {
@@ -183,6 +212,9 @@ mod tests {
         compile_exp: Term::expression(Expression::op('+', 1, 2)) =>  [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Stack(Arithmetic(Add))];
         compile_neg: Term::neg(Term::integer(2)) => [Stack(Push(Constant, 2)), Stack(Arithmetic(Neg))];
         compile_not: Term::not(Term::False) => [Stack(Push(Constant, 0)), Stack(Arithmetic(Not))];
+        compile_call_func0: Term::Call(SubroutineCall::FunctionCall("Foo.bar", vec![])) => [Call("Foo.bar", 0)];
+        compile_call_func1: Term::Call(SubroutineCall::FunctionCall("Foo.bar", vec![1.into()])) => [Stack(Push(Constant, 1)), Call("Foo.bar", 1)];
+        compile_call_func2: Term::Call(SubroutineCall::FunctionCall("Foo.bar", vec![1.into(), 2.into()])) => [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Call("Foo.bar", 2)];
     }
 
     #[test]
@@ -222,5 +254,37 @@ mod tests {
         compiler.define_field("foo", Type::Int);
         compiler.compile_term(Term::variable("foo")).unwrap();
         assert_eq!(compiler.code(), [Stack(Push(This, 0))]);
+    }
+
+    #[test]
+    fn compile_method_call0() {
+        let mut compiler = Compiler::new();
+        compiler.define_local("foo", Type::Class("Foo"));
+        compiler
+            .compile_term(Term::Call(SubroutineCall::MethodCall("foo", "bar", vec![])))
+            .unwrap();
+        assert_eq!(compiler.code(), [Stack(Push(Local, 0)), Call("Foo.bar", 1)]);
+    }
+
+    #[test]
+    fn compile_method_call2() {
+        let mut compiler = Compiler::new();
+        compiler.define_local("foo", Type::Class("Foo"));
+        compiler
+            .compile_term(Term::Call(SubroutineCall::MethodCall(
+                "foo",
+                "bar",
+                vec![1.into(), 2.into()],
+            )))
+            .unwrap();
+        assert_eq!(
+            compiler.code(),
+            [
+                Stack(Push(Local, 0)),
+                Stack(Push(Constant, 1)),
+                Stack(Push(Constant, 2)),
+                Call("Foo.bar", 3)
+            ]
+        );
     }
 }

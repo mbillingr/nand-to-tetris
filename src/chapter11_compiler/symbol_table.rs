@@ -56,7 +56,7 @@ impl<'s> SymbolTable<'s> {
         self.counts[&kind]
     }
 
-    pub fn find(&self, name: &str) -> Option<&Entry> {
+    pub fn find(&self, name: &str) -> Option<&Entry<'s>> {
         self.table.get(name)
     }
 }
