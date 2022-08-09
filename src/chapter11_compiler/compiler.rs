@@ -63,7 +63,7 @@ impl<'s> Compiler<'s> {
                 self.code
                     .push(Command::Stack(StackCmd::Pop(Segment::That, 0)));
             }
-            _ => todo!(),
+            _ => todo!("{:?}", stmt),
         }
         Ok(())
     }
@@ -234,6 +234,7 @@ mod tests {
     compiler_tests! {
         compile_statement:
         compile_return: Statement::Return(None) => [Stack(Push(Constant, 0)), Return];
+        compile_do: Statement::Do(SubroutineCall::FunctionCall("foo", vec![])) => [Call("Foo.bar", 0), Stack(Pop(Temp, 0))];
     }
 
     compiler_tests! {
