@@ -1,7 +1,7 @@
 use crate::chapter07_vm::parser::Segment::{Constant, Pointer};
 use crate::chapter07_vm::parser::{ArithmeticCmd, Command as StackCmd, Segment};
 use crate::chapter08_vm::parser::Command;
-use crate::chapter10_parser::parser::{Expression, SubroutineCall, Term, Type};
+use crate::chapter10_parser::parser::{Expression, Statement, SubroutineCall, Term, Type};
 use crate::chapter11_compiler::symbol_table::{self, Entry, SymbolTable, VarKind};
 
 pub struct Compiler<'s> {
@@ -37,6 +37,35 @@ impl<'s> Compiler<'s> {
 
     fn define_field(&mut self, name: &'s str, typ: Type<'s>) {
         self.class_symbols.define(name, typ, VarKind::Field);
+    }
+
+    fn compile_statement(&mut self, stmt: Statement<'s>) -> Result<(), String> {
+        match stmt {
+            Statement::Return(None) => {
+                self.compile_statement(Statement::Return(Some(Expression::Term(Term::Null))))?
+            }
+            Statement::Return(Some(expr)) => {
+                self.compile_expression(expr)?;
+                self.code.push(Command::Return);
+            }
+            Statement::Let(var, None, expr) => {
+                self.compile_expression(expr)?;
+                self.compile_varible_assignment(var)?;
+            }
+            Statement::Let(var, Some(idx), expr) => {
+                self.compile_expression(expr)?;
+                self.compile_varible_reference(var)?;
+                self.compile_expression(idx)?;
+                self.code
+                    .push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Add)));
+                self.code
+                    .push(Command::Stack(StackCmd::Pop(Segment::Pointer, 1)));
+                self.code
+                    .push(Command::Stack(StackCmd::Pop(Segment::That, 0)));
+            }
+            _ => todo!(),
+        }
+        Ok(())
     }
 
     fn compile_expression(&mut self, expr: Expression<'s>) -> Result<(), String> {
@@ -78,15 +107,18 @@ impl<'s> Compiler<'s> {
                 }
             }
             Term::Variable(name) => {
-                let symbol_table::Entry {
-                    typ: _,
-                    kind,
-                    index,
-                } = self.lookup(name)?;
-                self.code
-                    .push(Command::Stack(StackCmd::Push(kind.into(), *index)));
+                self.compile_varible_reference(name)?;
             }
-            Term::ArrayIndex(_, _) => todo!(),
+            Term::ArrayIndex(var, idx) => {
+                self.compile_varible_reference(var)?;
+                self.compile_expression(*idx)?;
+                self.code
+                    .push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Add)));
+                self.code
+                    .push(Command::Stack(StackCmd::Pop(Segment::Pointer, 1)));
+                self.code
+                    .push(Command::Stack(StackCmd::Push(Segment::That, 0)));
+            }
             Term::Expression(expr) => return self.compile_expression(*expr),
             Term::Neg(term) => {
                 self.compile_term(*term)?;
@@ -112,10 +144,13 @@ impl<'s> Compiler<'s> {
                         kind,
                         index,
                     } => {
+                        // Rather evilly leak the string in order to create the fully qualified
+                        // name with a lifetime that exceeds 's.
+                        let full_name = Box::leak(format!("{cls}.{name}").into_boxed_str());
                         self.code
                             .push(Command::Stack(StackCmd::Push(kind.into(), *index)));
                         self.compile_args(args)?;
-                        self.code.push(Command::Call(name, n_args));
+                        self.code.push(Command::Call(full_name, n_args));
                     }
                     symbol_table::Entry { typ, .. } => {
                         return Err(format!("Not an object: {:?}", typ))
@@ -126,18 +161,40 @@ impl<'s> Compiler<'s> {
         Ok(())
     }
 
-    fn lookup(&self, name: &str) -> Result<&Entry<'s>, String> {
-        self.function_symbols
-            .find(name)
-            .or_else(|| self.class_symbols.find(name))
-            .ok_or_else(|| format!("Undefined variable: {}", name))
-    }
-
     fn compile_args(&mut self, args: Vec<Expression<'s>>) -> Result<(), String> {
         for arg in args {
             self.compile_expression(arg)?;
         }
         Ok(())
+    }
+
+    fn compile_varible_reference(&mut self, name: &str) -> Result<(), String> {
+        let symbol_table::Entry {
+            typ: _,
+            kind,
+            index,
+        } = self.lookup(name)?;
+        self.code
+            .push(Command::Stack(StackCmd::Push(kind.into(), *index)));
+        Ok(())
+    }
+
+    fn compile_varible_assignment(&mut self, name: &str) -> Result<(), String> {
+        let symbol_table::Entry {
+            typ: _,
+            kind,
+            index,
+        } = self.lookup(name)?;
+        self.code
+            .push(Command::Stack(StackCmd::Pop(kind.into(), *index)));
+        Ok(())
+    }
+
+    fn lookup(&self, name: &str) -> Result<&Entry<'s>, String> {
+        self.function_symbols
+            .find(name)
+            .or_else(|| self.class_symbols.find(name))
+            .ok_or_else(|| format!("Undefined variable: {}", name))
     }
 }
 
@@ -159,7 +216,7 @@ mod tests {
     use crate::chapter07_vm::parser::Command::*;
     use crate::chapter07_vm::parser::Segment::*;
     use crate::chapter08_vm::parser::Command::*;
-    use crate::chapter10_parser::parser::{Expression, SubroutineCall, Type};
+    use crate::chapter10_parser::parser::{Expression, Statement, SubroutineCall, Type};
 
     macro_rules! compiler_tests {
         ($f:ident: $($name:ident: $term:expr => $expected:expr;)*) => {
@@ -172,6 +229,11 @@ mod tests {
                 }
             )*
         };
+    }
+
+    compiler_tests! {
+        compile_statement:
+        compile_return: Statement::Return(None) => [Stack(Push(Constant, 0)), Return];
     }
 
     compiler_tests! {
@@ -284,6 +346,89 @@ mod tests {
                 Stack(Push(Constant, 1)),
                 Stack(Push(Constant, 2)),
                 Call("Foo.bar", 3)
+            ]
+        );
+    }
+
+    #[test]
+    fn compile_array_index() {
+        let mut compiler = Compiler::new();
+        compiler.define_local("arr", Type::Class("Array"));
+        compiler
+            .compile_term(Term::ArrayIndex("arr", 42.into()))
+            .unwrap();
+        assert_eq!(
+            compiler.code(),
+            [
+                Stack(Push(Local, 0)),
+                Stack(Push(Constant, 42)),
+                Stack(Arithmetic(Add)),
+                Stack(Pop(Pointer, 1)),
+                Stack(Push(That, 0))
+            ]
+        );
+    }
+
+    #[test]
+    fn compile_let_statement() {
+        let mut compiler = Compiler::new();
+        compiler.define_local("foo", Type::Int);
+        compiler
+            .compile_statement(Statement::Let("foo", None, 42.into()))
+            .unwrap();
+        assert_eq!(
+            compiler.code(),
+            [Stack(Push(Constant, 42)), Stack(Pop(Local, 0))]
+        );
+    }
+
+    #[test]
+    fn compile_let_array_statement() {
+        let mut compiler = Compiler::new();
+        compiler.define_local("foo", Type::Int);
+        compiler
+            .compile_statement(Statement::Let("foo", Some(2.into()), 42.into()))
+            .unwrap();
+        assert_eq!(
+            compiler.code(),
+            [
+                Stack(Push(Constant, 42)),
+                Stack(Push(Local, 0)),
+                Stack(Push(Constant, 2)),
+                Stack(Arithmetic(Add)),
+                Stack(Pop(Pointer, 1)),
+                Stack(Pop(That, 0))
+            ]
+        );
+    }
+
+    #[test]
+    fn compile_let_array_to_array() {
+        let mut compiler = Compiler::new();
+        compiler.define_local("a", Type::Int);
+        compiler.define_local("b", Type::Int);
+        compiler
+            .compile_statement(Statement::Let(
+                "a",
+                Some(7.into()),
+                Term::ArrayIndex("b", 9.into()).into(),
+            ))
+            .unwrap();
+        assert_eq!(
+            compiler.code(),
+            [
+                // push b[9]
+                Stack(Push(Local, 1)),
+                Stack(Push(Constant, 9)),
+                Stack(Arithmetic(Add)),
+                Stack(Pop(Pointer, 1)),
+                Stack(Push(That, 0)),
+                // pop a[7]
+                Stack(Push(Local, 0)),
+                Stack(Push(Constant, 7)),
+                Stack(Arithmetic(Add)),
+                Stack(Pop(Pointer, 1)),
+                Stack(Pop(That, 0)),
             ]
         );
     }

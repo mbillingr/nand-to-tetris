@@ -61,7 +61,7 @@ impl std::fmt::Display for Type<'_> {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum Statement<'s> {
-    Let(String, Option<Expression<'s>>, Expression<'s>),
+    Let(&'s str, Option<Expression<'s>>, Expression<'s>),
     If(Expression<'s>, Vec<Statement<'s>>, Vec<Statement<'s>>),
     While(Expression<'s>, Vec<Statement<'s>>),
     Do(SubroutineCall<'s>),
@@ -70,11 +70,11 @@ pub enum Statement<'s> {
 
 impl<'s> Statement<'s> {
     fn let_(
-        varname: impl ToString,
+        varname: &'s str,
         array_index: Option<Expression<'s>>,
         value: impl Into<Expression<'s>>,
     ) -> Self {
-        Self::Let(varname.to_string(), array_index, value.into())
+        Self::Let(varname, array_index, value.into())
     }
 
     fn if_(
