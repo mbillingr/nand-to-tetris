@@ -8,7 +8,7 @@ pub struct Compiler<'s> {
     code: Vec<Command<'s>>,
     function_symbols: SymbolTable<'s>,
     class_symbols: SymbolTable<'s>,
-    label_counter: usize
+    label_counter: usize,
 }
 
 impl<'s> Compiler<'s> {
@@ -45,7 +45,7 @@ impl<'s> Compiler<'s> {
         self.label_counter += 1;
         let label = format!("{}-{}", name, self.label_counter);
         // Rather evilly leak the string in order to create a name with a lifetime of at least 's.
-        return Box::leak(label.into_boxed_str())
+        return Box::leak(label.into_boxed_str());
     }
 
     fn compile_statement(&mut self, stmt: Statement<'s>) -> Result<(), String> {
@@ -88,7 +88,18 @@ impl<'s> Compiler<'s> {
                 self.compile_block(yes)?;
                 self.code.push(Command::Label(l2));
             }
-            _ => todo!("{:?}", stmt),
+            Statement::While(cond, body) => {
+                let l1 = self.unique_label("WHILE");
+                let l2 = self.unique_label("WHILE-END");
+                self.code.push(Command::Label(l1));
+                self.compile_expression(cond)?;
+                self.code
+                    .push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Not)));
+                self.code.push(Command::IfGoto(l2));
+                self.compile_block(body)?;
+                self.code.push(Command::Goto(l1));
+                self.code.push(Command::Label(l2));
+            }
         }
         Ok(())
     }
@@ -277,6 +288,16 @@ mod tests {
             Stack(Push(Constant, 1)),
             Return,
             Label("IF-END-2")
+        ];
+        compile_while: Statement::While(Term::False.into(), vec![Statement::Return(Some(1.into()))]) => [
+            Label("WHILE-1"),
+            Stack(Push(Constant, 0)),
+            Stack(Arithmetic(Not)),
+            IfGoto("WHILE-END-2"),
+            Stack(Push(Constant, 1)),
+            Return,
+            Goto("WHILE-1"),
+            Label("WHILE-END-2")
         ];
     }
 
