@@ -8,6 +8,7 @@ pub struct Compiler<'s> {
     code: Vec<Command<'s>>,
     function_symbols: SymbolTable<'s>,
     class_symbols: SymbolTable<'s>,
+    label_counter: usize
 }
 
 impl<'s> Compiler<'s> {
@@ -16,6 +17,7 @@ impl<'s> Compiler<'s> {
             code: vec![],
             function_symbols: SymbolTable::new(),
             class_symbols: SymbolTable::new(),
+            label_counter: 0,
         }
     }
 
@@ -37,6 +39,13 @@ impl<'s> Compiler<'s> {
 
     fn define_field(&mut self, name: &'s str, typ: Type<'s>) {
         self.class_symbols.define(name, typ, VarKind::Field);
+    }
+
+    fn unique_label(&mut self, name: &str) -> &'s str {
+        self.label_counter += 1;
+        let label = format!("{}-{}", name, self.label_counter);
+        // Rather evilly leak the string in order to create a name with a lifetime of at least 's.
+        return Box::leak(label.into_boxed_str())
     }
 
     fn compile_statement(&mut self, stmt: Statement<'s>) -> Result<(), String> {
@@ -63,7 +72,30 @@ impl<'s> Compiler<'s> {
                 self.code
                     .push(Command::Stack(StackCmd::Pop(Segment::That, 0)));
             }
+            Statement::Do(call) => {
+                self.compile_term(Term::Call(call))?;
+                self.code
+                    .push(Command::Stack(StackCmd::Pop(Segment::Temp, 0)));
+            }
+            Statement::If(cond, yes, no) => {
+                let l1 = self.unique_label("IF-TRUE");
+                let l2 = self.unique_label("IF-END");
+                self.compile_expression(cond)?;
+                self.code.push(Command::IfGoto(l1));
+                self.compile_block(no)?;
+                self.code.push(Command::Goto(l2));
+                self.code.push(Command::Label(l1));
+                self.compile_block(yes)?;
+                self.code.push(Command::Label(l2));
+            }
             _ => todo!("{:?}", stmt),
+        }
+        Ok(())
+    }
+
+    fn compile_block(&mut self, stmts: Vec<Statement<'s>>) -> Result<(), String> {
+        for stmt in stmts {
+            self.compile_statement(stmt)?;
         }
         Ok(())
     }
@@ -234,7 +266,18 @@ mod tests {
     compiler_tests! {
         compile_statement:
         compile_return: Statement::Return(None) => [Stack(Push(Constant, 0)), Return];
-        compile_do: Statement::Do(SubroutineCall::FunctionCall("foo", vec![])) => [Call("Foo.bar", 0), Stack(Pop(Temp, 0))];
+        compile_do: Statement::Do(SubroutineCall::FunctionCall("foo", vec![])) => [Call("foo", 0), Stack(Pop(Temp, 0))];
+        compile_if: Statement::If(Term::False.into(), vec![Statement::Return(Some(1.into()))], vec![Statement::Return(Some(2.into()))]) => [
+            Stack(Push(Constant, 0)),
+            IfGoto("IF-TRUE-1"),
+            Stack(Push(Constant, 2)),
+            Return,
+            Goto("IF-END-2"),
+            Label("IF-TRUE-1"),
+            Stack(Push(Constant, 1)),
+            Return,
+            Label("IF-END-2")
+        ];
     }
 
     compiler_tests! {
