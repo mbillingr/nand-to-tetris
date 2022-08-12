@@ -314,7 +314,7 @@ mod tests {
             name: "new",
             params: vec![],
             body: SubroutineBody(
-                vec![VarDec(Type::Int, vec!["str"])],
+                vec![VarDec(Type::Int, vec!["x"])],
                 vec![Statement::Return(Some(Term::This.into()))],
             )
         } => [
@@ -323,6 +323,22 @@ mod tests {
             Call("Memory.alloc", 1),
             Stack(Pop(Pointer, 0)),
             Stack(Push(Pointer, 0)),
+            Return,
+        ];
+        compile_method: SubroutineDec{
+            kind: SubroutineKind::Method,
+            typ: Type::Void,
+            name: "bar",
+            params: vec![],
+            body: SubroutineBody(
+                vec![],
+                vec![Statement::Return(None)],
+            )
+        } => [
+            Function("Foo.bar", 0),
+            Stack(Push(Argument, 0)),
+            Stack(Pop(Pointer, 0)),
+            Stack(Push(Constant, 0)),
             Return,
         ];
     }
