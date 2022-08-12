@@ -18,11 +18,11 @@ pub enum ClassVarDec<'s> {
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct SubroutineDec<'s> {
-    kind: SubroutineKind,
-    typ: Type<'s>,
-    name: &'s str,
-    params: Vec<(Type<'s>, &'s str)>,
-    body: SubroutineBody<'s>,
+    pub kind: SubroutineKind,
+    pub typ: Type<'s>,
+    pub name: &'s str,
+    pub params: Vec<(Type<'s>, &'s str)>,
+    pub body: SubroutineBody<'s>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -33,10 +33,22 @@ pub enum SubroutineKind {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct SubroutineBody<'s>(Vec<VarDec<'s>>, Vec<Statement<'s>>);
+pub struct SubroutineBody<'s>(pub Vec<VarDec<'s>>, pub Vec<Statement<'s>>);
+
+impl<'s> SubroutineBody<'s> {
+    pub fn count_locals(&self) -> usize {
+        self.0.iter().map(|vd| vd.1.len()).sum()
+    }
+
+    pub fn var_decs(&self) -> impl Iterator<Item = (&'s str, Type<'s>)> + '_ {
+        self.0
+            .iter()
+            .flat_map(|vd| vd.1.iter().map(|name| (*name, vd.0)))
+    }
+}
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct VarDec<'s>(Type<'s>, Vec<&'s str>);
+pub struct VarDec<'s>(pub Type<'s>, pub Vec<&'s str>);
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Type<'s> {

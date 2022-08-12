@@ -1,7 +1,10 @@
 use crate::chapter07_vm::parser::Segment::{Constant, Pointer};
 use crate::chapter07_vm::parser::{ArithmeticCmd, Command as StackCmd, Segment};
 use crate::chapter08_vm::parser::Command;
-use crate::chapter10_parser::parser::{Expression, Statement, SubroutineCall, Term, Type};
+use crate::chapter10_parser::parser::{
+    Expression, Statement, SubroutineBody, SubroutineCall, SubroutineDec, SubroutineKind, Term,
+    Type, VarDec,
+};
 use crate::chapter11_compiler::symbol_table::{self, Entry, SymbolTable, VarKind};
 
 pub struct Compiler<'s> {
@@ -46,6 +49,35 @@ impl<'s> Compiler<'s> {
         let label = format!("{}-{}", name, self.label_counter);
         // Rather evilly leak the string in order to create a name with a lifetime of at least 's.
         return Box::leak(label.into_boxed_str());
+    }
+
+    fn compile_subroutine(&mut self, subr: SubroutineDec<'s>) -> Result<(), String> {
+        for (typ, name) in subr.params {
+            self.function_symbols.define(name, typ, VarKind::Arg);
+        }
+        for (name, typ) in subr.body.var_decs() {
+            self.function_symbols.define(name, typ, VarKind::Var);
+        }
+        match subr.kind {
+            SubroutineKind::Constructor => {
+                // Rather evilly leak the string in order to create a name with a lifetime of at least 's.
+                let name =
+                    Box::leak(format!("{}.{}", subr.typ.to_string(), subr.name).into_boxed_str());
+                let n_locals = self.function_symbols.count(VarKind::Var);
+                self.code.push(Command::Function(name, n_locals as u16));
+
+                let n_fields = self.class_symbols.count(VarKind::Field);
+                self.code
+                    .push(Command::Stack(StackCmd::Push(Segment::Constant, n_fields)));
+                self.code.push(Command::Call("Memory.alloc", 1));
+                self.code
+                    .push(Command::Stack(StackCmd::Pop(Segment::Pointer, 0)));
+
+                self.compile_block(subr.body.1)?;
+            }
+            _ => todo!(),
+        }
+        Ok(())
     }
 
     fn compile_statement(&mut self, stmt: Statement<'s>) -> Result<(), String> {
@@ -272,6 +304,27 @@ mod tests {
                 }
             )*
         };
+    }
+
+    compiler_tests! {
+        compile_subroutine:
+        compile_constructor: SubroutineDec{
+            kind: SubroutineKind::Constructor,
+            typ: Type::Class("Foo"),
+            name: "new",
+            params: vec![],
+            body: SubroutineBody(
+                vec![VarDec(Type::Int, vec!["str"])],
+                vec![Statement::Return(Some(Term::This.into()))],
+            )
+        } => [
+            Function("Foo.new", 1),
+            Stack(Push(Constant, 0)),
+            Call("Memory.alloc", 1),
+            Stack(Pop(Pointer, 0)),
+            Stack(Push(Pointer, 0)),
+            Return,
+        ];
     }
 
     compiler_tests! {
