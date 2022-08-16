@@ -69,11 +69,12 @@ impl<'s> Compiler<'s> {
         for (name, typ) in subr.body.var_decs() {
             self.function_symbols.define(name, typ, VarKind::Var);
         }
+
+        // Rather evilly leak the string in order to create a name with a lifetime of at least 's.
+        let name = Box::leak(format!("{}.{}", self.current_class, subr.name).into_boxed_str());
+
         match subr.kind {
             SubroutineKind::Constructor => {
-                // Rather evilly leak the string in order to create a name with a lifetime of at least 's.
-                let name =
-                    Box::leak(format!("{}.{}", self.current_class, subr.name).into_boxed_str());
                 let n_locals = self.function_symbols.count(VarKind::Var);
                 self.code.push(Command::Function(name, n_locals as u16));
 
@@ -86,15 +87,17 @@ impl<'s> Compiler<'s> {
                 self.compile_block(subr.body.1)?;
             }
             SubroutineKind::Method => {
-                // Rather evilly leak the string in order to create a name with a lifetime of at least 's.
-                let name =
-                    Box::leak(format!("{}.{}", self.current_class, subr.name).into_boxed_str());
                 let n_locals = self.function_symbols.count(VarKind::Var);
                 self.code.push(Command::Function(name, n_locals as u16));
                 self.code
                     .push(Command::Stack(StackCmd::Push(Segment::Argument, 0)));
                 self.code
                     .push(Command::Stack(StackCmd::Pop(Segment::Pointer, 0)));
+                self.compile_block(subr.body.1)?;
+            }
+            SubroutineKind::Function => {
+                let n_locals = self.function_symbols.count(VarKind::Var);
+                self.code.push(Command::Function(name, n_locals as u16));
                 self.compile_block(subr.body.1)?;
             }
             _ => todo!(),
@@ -359,7 +362,7 @@ mod tests {
             Stack(Push(Pointer, 0)),
             Return,
         ];
-        compile_method: SubroutineDec{
+        compile_method: SubroutineDec {
             kind: SubroutineKind::Method,
             typ: Type::Void,
             name: "bar",
@@ -373,6 +376,22 @@ mod tests {
             Stack(Push(Argument, 0)),
             Stack(Pop(Pointer, 0)),
             Stack(Push(Argument, 0)),
+            Return,
+        ];
+        compile_function: SubroutineDec {
+            kind: SubroutineKind::Function,
+            typ: Type::Int,
+            name: "bar",
+            params: vec![(Type::Int, "x"), (Type::Int, "y")],
+            body: SubroutineBody(
+                vec![],
+                vec![Statement::Return(Some(Expression::op('+', Term::Variable("x"), Term::Variable("y"))))],
+            )
+        } => [
+            Function("Foo.bar", 0),
+            Stack(Push(Argument, 0)),
+            Stack(Push(Argument, 1)),
+            Stack(Arithmetic(Add)),
             Return,
         ];
     }
