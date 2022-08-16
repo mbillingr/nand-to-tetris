@@ -12,6 +12,7 @@ pub struct Compiler<'s> {
     function_symbols: SymbolTable<'s>,
     class_symbols: SymbolTable<'s>,
     label_counter: usize,
+    current_class: &'s str,
 }
 
 impl<'s> Compiler<'s> {
@@ -21,7 +22,12 @@ impl<'s> Compiler<'s> {
             function_symbols: SymbolTable::new(),
             class_symbols: SymbolTable::new(),
             label_counter: 0,
+            current_class: "<NO CLASS>",
         }
+    }
+
+    pub fn set_classname(&mut self, name: &'s str) {
+        self.current_class = name;
     }
 
     pub fn code(&self) -> &[Command] {
@@ -52,6 +58,11 @@ impl<'s> Compiler<'s> {
     }
 
     fn compile_subroutine(&mut self, subr: SubroutineDec<'s>) -> Result<(), String> {
+        self.function_symbols.reset();
+        if subr.kind == SubroutineKind::Method {
+            self.function_symbols
+                .define("this", Type::Class(self.current_class), VarKind::Arg)
+        }
         for (typ, name) in subr.params {
             self.function_symbols.define(name, typ, VarKind::Arg);
         }
@@ -62,7 +73,7 @@ impl<'s> Compiler<'s> {
             SubroutineKind::Constructor => {
                 // Rather evilly leak the string in order to create a name with a lifetime of at least 's.
                 let name =
-                    Box::leak(format!("{}.{}", subr.typ.to_string(), subr.name).into_boxed_str());
+                    Box::leak(format!("{}.{}", self.current_class, subr.name).into_boxed_str());
                 let n_locals = self.function_symbols.count(VarKind::Var);
                 self.code.push(Command::Function(name, n_locals as u16));
 
@@ -72,7 +83,18 @@ impl<'s> Compiler<'s> {
                 self.code.push(Command::Call("Memory.alloc", 1));
                 self.code
                     .push(Command::Stack(StackCmd::Pop(Segment::Pointer, 0)));
-
+                self.compile_block(subr.body.1)?;
+            }
+            SubroutineKind::Method => {
+                // Rather evilly leak the string in order to create a name with a lifetime of at least 's.
+                let name =
+                    Box::leak(format!("{}.{}", self.current_class, subr.name).into_boxed_str());
+                let n_locals = self.function_symbols.count(VarKind::Var);
+                self.code.push(Command::Function(name, n_locals as u16));
+                self.code
+                    .push(Command::Stack(StackCmd::Push(Segment::Argument, 0)));
+                self.code
+                    .push(Command::Stack(StackCmd::Pop(Segment::Pointer, 0)));
                 self.compile_block(subr.body.1)?;
             }
             _ => todo!(),
@@ -294,6 +316,18 @@ mod tests {
     use crate::chapter10_parser::parser::{Expression, Statement, SubroutineCall, Type};
 
     macro_rules! compiler_tests {
+        ($f:ident $init:expr; $($name:ident: $term:expr => $expected:expr;)*) => {
+            $(
+                #[test]
+                fn $name() {
+                    let mut compiler = Compiler::new();
+                    ($init)(&mut compiler);
+                    compiler.$f($term).unwrap();
+                    assert_eq!(compiler.code(), $expected);
+                }
+            )*
+        };
+
         ($f:ident: $($name:ident: $term:expr => $expected:expr;)*) => {
             $(
                 #[test]
@@ -307,7 +341,7 @@ mod tests {
     }
 
     compiler_tests! {
-        compile_subroutine:
+        compile_subroutine (|compiler: &mut Compiler| compiler.set_classname("Foo"));
         compile_constructor: SubroutineDec{
             kind: SubroutineKind::Constructor,
             typ: Type::Class("Foo"),
@@ -332,13 +366,13 @@ mod tests {
             params: vec![],
             body: SubroutineBody(
                 vec![],
-                vec![Statement::Return(None)],
+                vec![Statement::Return(Some(Term::Variable("this").into()))],
             )
         } => [
             Function("Foo.bar", 0),
             Stack(Push(Argument, 0)),
             Stack(Pop(Pointer, 0)),
-            Stack(Push(Constant, 0)),
+            Stack(Push(Argument, 0)),
             Return,
         ];
     }
