@@ -2,8 +2,8 @@ use crate::chapter07_vm::parser::Segment::{Constant, Pointer};
 use crate::chapter07_vm::parser::{ArithmeticCmd, Command as StackCmd, Segment};
 use crate::chapter08_vm::parser::Command;
 use crate::chapter10_parser::parser::{
-    Class, ClassVarDec, Expression, Statement, SubroutineCall, SubroutineDec,
-    SubroutineKind, Term, Type,
+    Class, ClassVarDec, Expression, Statement, SubroutineCall, SubroutineDec, SubroutineKind, Term,
+    Type,
 };
 use crate::chapter11_compiler::symbol_table::{self, Entry, SymbolTable, VarKind};
 
@@ -255,19 +255,19 @@ impl<'s> Compiler<'s> {
                     .push(Command::Stack(StackCmd::Arithmetic(ArithmeticCmd::Not)));
             }
 
-            Term::Call(SubroutineCall::FunctionCall(name, args)) => {
+            Term::Call(SubroutineCall::ThisCall(name, args)) => {
                 let n_args = args.len() as u16;
                 self.compile_args(args)?;
                 self.code.push(Command::Call(name, n_args));
             }
-            Term::Call(SubroutineCall::MethodCall(obj, name, args)) => {
+            Term::Call(SubroutineCall::FullCall(cls_or_obj, name, args)) => {
                 let n_args = 1 + args.len() as u16;
-                match self.lookup(obj)? {
-                    symbol_table::Entry {
+                match self.lookup(cls_or_obj) {
+                    Ok(symbol_table::Entry {
                         typ: Type::Class(cls),
                         kind,
                         index,
-                    } => {
+                    }) => {
                         // Rather evilly leak the string in order to create the fully qualified
                         // name with a lifetime that exceeds 's.
                         let full_name = Box::leak(format!("{cls}.{name}").into_boxed_str());
@@ -276,8 +276,15 @@ impl<'s> Compiler<'s> {
                         self.compile_args(args)?;
                         self.code.push(Command::Call(full_name, n_args));
                     }
-                    symbol_table::Entry { typ, .. } => {
+                    Ok(symbol_table::Entry { typ, .. }) => {
                         return Err(format!("Not an object: {:?}", typ))
+                    }
+                    Err(_) => {
+                        // Rather evilly leak the string in order to create the fully qualified
+                        // name with a lifetime that exceeds 's.
+                        let full_name = Box::leak(format!("{cls_or_obj}.{name}").into_boxed_str());
+                        self.compile_args(args)?;
+                        self.code.push(Command::Call(full_name, n_args));
                     }
                 }
             }
@@ -341,7 +348,7 @@ mod tests {
     use crate::chapter07_vm::parser::Segment::*;
     use crate::chapter08_vm::parser::Command::*;
     use crate::chapter10_parser::parser::{
-        ClassVarDec, Expression, Statement, SubroutineCall, Type, SubroutineBody, VarDec
+        ClassVarDec, Expression, Statement, SubroutineBody, SubroutineCall, Type, VarDec,
     };
 
     macro_rules! compiler_tests {
@@ -481,7 +488,7 @@ mod tests {
     compiler_tests! {
         compile_statement:
         compile_return: Statement::Return(None) => [Stack(Push(Constant, 0)), Return];
-        compile_do: Statement::Do(SubroutineCall::FunctionCall("foo", vec![])) => [Call("foo", 0), Stack(Pop(Temp, 0))];
+        compile_do: Statement::Do(SubroutineCall::ThisCall("foo", vec![])) => [Call("foo", 0), Stack(Pop(Temp, 0))];
         compile_if: Statement::If(Term::False.into(), vec![Statement::Return(Some(1.into()))], vec![Statement::Return(Some(2.into()))]) => [
             Stack(Push(Constant, 0)),
             IfGoto("IF-TRUE-1"),
@@ -543,9 +550,9 @@ mod tests {
         compile_exp: Term::expression(Expression::op('+', 1, 2)) =>  [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Stack(Arithmetic(Add))];
         compile_neg: Term::neg(Term::integer(2)) => [Stack(Push(Constant, 2)), Stack(Arithmetic(Neg))];
         compile_not: Term::not(Term::False) => [Stack(Push(Constant, 0)), Stack(Arithmetic(Not))];
-        compile_call_func0: Term::Call(SubroutineCall::FunctionCall("Foo.bar", vec![])) => [Call("Foo.bar", 0)];
-        compile_call_func1: Term::Call(SubroutineCall::FunctionCall("Foo.bar", vec![1.into()])) => [Stack(Push(Constant, 1)), Call("Foo.bar", 1)];
-        compile_call_func2: Term::Call(SubroutineCall::FunctionCall("Foo.bar", vec![1.into(), 2.into()])) => [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Call("Foo.bar", 2)];
+        compile_call_func0: Term::Call(SubroutineCall::ThisCall("Foo.bar", vec![])) => [Call("Foo.bar", 0)];
+        compile_call_func1: Term::Call(SubroutineCall::ThisCall("Foo.bar", vec![1.into()])) => [Stack(Push(Constant, 1)), Call("Foo.bar", 1)];
+        compile_call_func2: Term::Call(SubroutineCall::ThisCall("Foo.bar", vec![1.into(), 2.into()])) => [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Call("Foo.bar", 2)];
     }
 
     #[test]
@@ -592,7 +599,7 @@ mod tests {
         let mut compiler = Compiler::new();
         compiler.define_local("foo", Type::Class("Foo"));
         compiler
-            .compile_term(Term::Call(SubroutineCall::MethodCall("foo", "bar", vec![])))
+            .compile_term(Term::Call(SubroutineCall::FullCall("foo", "bar", vec![])))
             .unwrap();
         assert_eq!(compiler.code(), [Stack(Push(Local, 0)), Call("Foo.bar", 1)]);
     }
@@ -602,7 +609,7 @@ mod tests {
         let mut compiler = Compiler::new();
         compiler.define_local("foo", Type::Class("Foo"));
         compiler
-            .compile_term(Term::Call(SubroutineCall::MethodCall(
+            .compile_term(Term::Call(SubroutineCall::FullCall(
                 "foo",
                 "bar",
                 vec![1.into(), 2.into()],
@@ -617,6 +624,15 @@ mod tests {
                 Call("Foo.bar", 3)
             ]
         );
+    }
+
+    #[test]
+    fn compile_method_call_static() {
+        let mut compiler = Compiler::new();
+        compiler
+            .compile_term(Term::Call(SubroutineCall::FullCall("Foo", "bar", vec![])))
+            .unwrap();
+        assert_eq!(compiler.code(), [Call("Foo.bar", 1)]);
     }
 
     #[test]

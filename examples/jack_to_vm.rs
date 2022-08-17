@@ -5,10 +5,10 @@ and write unoptimized assembly code to stdout.
 use nand_to_tetris::chapter10_parser::parser;
 use nand_to_tetris::chapter10_parser::parser::ClassVarDec;
 use nand_to_tetris::chapter10_parser::tokenizer::JackTokenizer;
+use nand_to_tetris::chapter11_compiler::compiler::Compiler;
 use nand_to_tetris::file_utils::file_or_files_in_dir;
 use std::env;
 use std::fs;
-use nand_to_tetris::chapter11_compiler::compiler::Compiler;
 
 fn main() -> Result<(), String> {
     let mut args: Vec<_> = env::args().collect();

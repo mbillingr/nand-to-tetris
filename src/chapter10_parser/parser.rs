@@ -215,17 +215,17 @@ impl From<u16> for Term<'_> {
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum SubroutineCall<'s> {
-    FunctionCall(&'s str, Vec<Expression<'s>>),
-    MethodCall(&'s str, &'s str, Vec<Expression<'s>>),
+    ThisCall(&'s str, Vec<Expression<'s>>),
+    FullCall(&'s str, &'s str, Vec<Expression<'s>>),
 }
 
 impl<'s> SubroutineCall<'s> {
-    fn function_call(func: &'s str, args: Vec<Expression<'s>>) -> Self {
-        Self::FunctionCall(func, args)
+    fn this_call(func: &'s str, args: Vec<Expression<'s>>) -> Self {
+        Self::ThisCall(func, args)
     }
 
-    fn method_call(obj: &'s str, func: &'s str, args: Vec<Expression<'s>>) -> Self {
-        Self::MethodCall(obj, func, args)
+    fn full_call(obj: &'s str, func: &'s str, args: Vec<Expression<'s>>) -> Self {
+        Self::FullCall(obj, func, args)
     }
 }
 
@@ -473,8 +473,8 @@ parser! {
 }
 
 parser! {
-    subroutine_call : SubroutineCall = (obj @ identifier '.' fun @ identifier args @ expression_list => SubroutineCall::method_call(obj, fun, args))
-                                     | (fun @ identifier args @ expression_list => SubroutineCall::function_call(fun, args))
+    subroutine_call : SubroutineCall = (obj @ identifier '.' fun @ identifier args @ expression_list => SubroutineCall::full_call(obj, fun, args))
+                                     | (fun @ identifier args @ expression_list => SubroutineCall::this_call(fun, args))
 }
 
 parser! {
@@ -634,7 +634,7 @@ mod tests {
         assert_eq!(
             subroutine_call(JackTokenizer::new("foo()")),
             Ok((
-                SubroutineCall::FunctionCall("foo", vec![]),
+                SubroutineCall::ThisCall("foo", vec![]),
                 JackTokenizer::end()
             ))
         );
@@ -642,7 +642,7 @@ mod tests {
         assert_eq!(
             subroutine_call(JackTokenizer::new("foo.bar()")),
             Ok((
-                SubroutineCall::MethodCall("foo", "bar", vec![]),
+                SubroutineCall::FullCall("foo", "bar", vec![]),
                 JackTokenizer::end()
             ))
         );
@@ -803,7 +803,7 @@ mod tests {
         assert_eq!(
             statement(JackTokenizer::new("do foo();")),
             Ok((
-                Statement::Do(SubroutineCall::function_call("foo", vec![])),
+                Statement::Do(SubroutineCall::this_call("foo", vec![])),
                 JackTokenizer::end()
             ))
         );
