@@ -261,7 +261,7 @@ impl<'s> Compiler<'s> {
                 self.code.push(Command::Call(name, n_args));
             }
             Term::Call(SubroutineCall::FullCall(cls_or_obj, name, args)) => {
-                let n_args = 1 + args.len() as u16;
+                let n_args = args.len() as u16;
                 match self.lookup(cls_or_obj) {
                     Ok(symbol_table::Entry {
                         typ: Type::Class(cls),
@@ -274,7 +274,7 @@ impl<'s> Compiler<'s> {
                         self.code
                             .push(Command::Stack(StackCmd::Push(kind.into(), *index)));
                         self.compile_args(args)?;
-                        self.code.push(Command::Call(full_name, n_args));
+                        self.code.push(Command::Call(full_name, 1 + n_args));
                     }
                     Ok(symbol_table::Entry { typ, .. }) => {
                         return Err(format!("Not an object: {:?}", typ))
@@ -632,7 +632,7 @@ mod tests {
         compiler
             .compile_term(Term::Call(SubroutineCall::FullCall("Foo", "bar", vec![])))
             .unwrap();
-        assert_eq!(compiler.code(), [Call("Foo.bar", 1)]);
+        assert_eq!(compiler.code(), [Call("Foo.bar", 0)]);
     }
 
     #[test]
