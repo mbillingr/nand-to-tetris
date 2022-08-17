@@ -34,22 +34,6 @@ impl<'s> Compiler<'s> {
         &self.code
     }
 
-    fn define_local(&mut self, name: &'s str, typ: Type<'s>) {
-        self.function_symbols.define(name, typ, VarKind::Var);
-    }
-
-    fn define_arg(&mut self, name: &'s str, typ: Type<'s>) {
-        self.function_symbols.define(name, typ, VarKind::Arg);
-    }
-
-    fn define_static(&mut self, name: &'s str, typ: Type<'s>) {
-        self.class_symbols.define(name, typ, VarKind::Static);
-    }
-
-    fn define_field(&mut self, name: &'s str, typ: Type<'s>) {
-        self.class_symbols.define(name, typ, VarKind::Field);
-    }
-
     fn unique_label(&mut self, name: &str) -> &'s str {
         self.label_counter += 1;
         let label = format!("{}-{}", name, self.label_counter);
@@ -565,7 +549,8 @@ mod tests {
     #[test]
     fn compile_local_variable_reference() {
         let mut compiler = Compiler::new();
-        compiler.define_local("foo", Type::Int);
+        let typ = Type::Int;
+        compiler.function_symbols.define("foo", typ, VarKind::Var);
         compiler.compile_term(Term::variable("foo")).unwrap();
         assert_eq!(compiler.code(), [Stack(Push(Local, 0))]);
     }
@@ -573,7 +558,8 @@ mod tests {
     #[test]
     fn compile_argument_reference() {
         let mut compiler = Compiler::new();
-        compiler.define_arg("foo", Type::Int);
+        let typ = Type::Int;
+        compiler.function_symbols.define("foo", typ, VarKind::Arg);
         compiler.compile_term(Term::variable("foo")).unwrap();
         assert_eq!(compiler.code(), [Stack(Push(Argument, 0))]);
     }
@@ -581,7 +567,8 @@ mod tests {
     #[test]
     fn compile_static_reference() {
         let mut compiler = Compiler::new();
-        compiler.define_static("foo", Type::Int);
+        let typ = Type::Int;
+        compiler.class_symbols.define("foo", typ, VarKind::Static);
         compiler.compile_term(Term::variable("foo")).unwrap();
         assert_eq!(compiler.code(), [Stack(Push(Static, 0))]);
     }
@@ -589,7 +576,8 @@ mod tests {
     #[test]
     fn compile_field_reference() {
         let mut compiler = Compiler::new();
-        compiler.define_field("foo", Type::Int);
+        let typ = Type::Int;
+        compiler.class_symbols.define("foo", typ, VarKind::Field);
         compiler.compile_term(Term::variable("foo")).unwrap();
         assert_eq!(compiler.code(), [Stack(Push(This, 0))]);
     }
@@ -597,7 +585,8 @@ mod tests {
     #[test]
     fn compile_method_call0() {
         let mut compiler = Compiler::new();
-        compiler.define_local("foo", Type::Class("Foo"));
+        let typ = Type::Class("Foo");
+        compiler.function_symbols.define("foo", typ, VarKind::Var);
         compiler
             .compile_term(Term::Call(SubroutineCall::FullCall("foo", "bar", vec![])))
             .unwrap();
@@ -607,7 +596,8 @@ mod tests {
     #[test]
     fn compile_method_call2() {
         let mut compiler = Compiler::new();
-        compiler.define_local("foo", Type::Class("Foo"));
+        let typ = Type::Class("Foo");
+        compiler.function_symbols.define("foo", typ, VarKind::Var);
         compiler
             .compile_term(Term::Call(SubroutineCall::FullCall(
                 "foo",
@@ -638,7 +628,8 @@ mod tests {
     #[test]
     fn compile_array_index() {
         let mut compiler = Compiler::new();
-        compiler.define_local("arr", Type::Class("Array"));
+        let typ = Type::Class("Array");
+        compiler.function_symbols.define("arr", typ, VarKind::Var);
         compiler
             .compile_term(Term::ArrayIndex("arr", 42.into()))
             .unwrap();
@@ -657,7 +648,8 @@ mod tests {
     #[test]
     fn compile_let_statement() {
         let mut compiler = Compiler::new();
-        compiler.define_local("foo", Type::Int);
+        let typ = Type::Int;
+        compiler.function_symbols.define("foo", typ, VarKind::Var);
         compiler
             .compile_statement(Statement::Let("foo", None, 42.into()))
             .unwrap();
@@ -670,7 +662,8 @@ mod tests {
     #[test]
     fn compile_let_array_statement() {
         let mut compiler = Compiler::new();
-        compiler.define_local("foo", Type::Int);
+        let typ = Type::Int;
+        compiler.function_symbols.define("foo", typ, VarKind::Var);
         compiler
             .compile_statement(Statement::Let("foo", Some(2.into()), 42.into()))
             .unwrap();
@@ -690,8 +683,10 @@ mod tests {
     #[test]
     fn compile_let_array_to_array() {
         let mut compiler = Compiler::new();
-        compiler.define_local("a", Type::Int);
-        compiler.define_local("b", Type::Int);
+        let typ = Type::Int;
+        compiler.function_symbols.define("a", typ, VarKind::Var);
+        let typ = Type::Int;
+        compiler.function_symbols.define("b", typ, VarKind::Var);
         compiler
             .compile_statement(Statement::Let(
                 "a",
