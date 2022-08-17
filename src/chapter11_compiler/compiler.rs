@@ -2,8 +2,8 @@ use crate::chapter07_vm::parser::Segment::{Constant, Pointer};
 use crate::chapter07_vm::parser::{ArithmeticCmd, Command as StackCmd, Segment};
 use crate::chapter08_vm::parser::Command;
 use crate::chapter10_parser::parser::{
-    Expression, Statement, SubroutineBody, SubroutineCall, SubroutineDec, SubroutineKind, Term,
-    Type, VarDec,
+    Class, ClassVarDec, Expression, Statement, SubroutineBody, SubroutineCall, SubroutineDec,
+    SubroutineKind, Term, Type, VarDec,
 };
 use crate::chapter11_compiler::symbol_table::{self, Entry, SymbolTable, VarKind};
 
@@ -57,6 +57,28 @@ impl<'s> Compiler<'s> {
         return Box::leak(label.into_boxed_str());
     }
 
+    fn compile_class(&mut self, cls: Class<'s>) -> Result<(), String> {
+        self.set_classname(cls.name);
+        self.class_symbols.reset();
+        self.function_symbols.reset();
+
+        for decl in cls.vars {
+            let (t, names, kind) = match decl {
+                ClassVarDec::Static(t, names) => (t, names, VarKind::Static),
+                ClassVarDec::Field(t, names) => (t, names, VarKind::Field),
+            };
+            for name in names {
+                self.class_symbols.define(name, t, kind);
+            }
+        }
+
+        for func in cls.funs {
+            self.compile_subroutine(func)?;
+        }
+
+        Ok(())
+    }
+
     fn compile_subroutine(&mut self, subr: SubroutineDec<'s>) -> Result<(), String> {
         self.function_symbols.reset();
         if subr.kind == SubroutineKind::Method {
@@ -100,7 +122,6 @@ impl<'s> Compiler<'s> {
                 self.code.push(Command::Function(name, n_locals as u16));
                 self.compile_block(subr.body.1)?;
             }
-            _ => todo!(),
         }
         Ok(())
     }
@@ -316,7 +337,9 @@ mod tests {
     use crate::chapter07_vm::parser::Command::*;
     use crate::chapter07_vm::parser::Segment::*;
     use crate::chapter08_vm::parser::Command::*;
-    use crate::chapter10_parser::parser::{Expression, Statement, SubroutineCall, Type};
+    use crate::chapter10_parser::parser::{
+        ClassVarDec, Expression, Statement, SubroutineCall, Type,
+    };
 
     macro_rules! compiler_tests {
         ($f:ident $init:expr; $($name:ident: $term:expr => $expected:expr;)*) => {
@@ -341,6 +364,62 @@ mod tests {
                 }
             )*
         };
+    }
+
+    compiler_tests! {
+        compile_class:
+        empty_class: Class{name: "Foo", vars: vec![], funs: vec![]} => [];
+        class_with_simple_func: Class{
+            name: "Const",
+            vars: vec![],
+            funs: vec![
+                SubroutineDec{
+                    kind: SubroutineKind::Function,
+                    typ: Type::Void,
+                    name: "void",
+                    params: vec![],
+                    body: SubroutineBody(vec![], vec![Statement::Return(None)])
+                }
+            ]
+        } => [
+            Function("Const.void", 0),
+            Stack(Push(Constant, 0)),
+            Return,
+        ];
+        class_with_static: Class{
+            name: "Const",
+            vars: vec![ClassVarDec::Static(Type::Int, vec!["x", "y"])],
+            funs: vec![
+                SubroutineDec{
+                    kind: SubroutineKind::Function,
+                    typ: Type::Void,
+                    name: "get_y",
+                    params: vec![],
+                    body: SubroutineBody(vec![], vec![Statement::Return(Some(Term::Variable("y").into()))])
+                }
+            ]
+        } => [
+            Function("Const.get_y", 0),
+            Stack(Push(Static, 1)),
+            Return,
+        ];
+        class_with_field: Class{
+            name: "Data",
+            vars: vec![ClassVarDec::Field(Type::Int, vec!["x", "y"])],
+            funs: vec![
+                SubroutineDec{
+                    kind: SubroutineKind::Function,
+                    typ: Type::Void,
+                    name: "get_y",
+                    params: vec![],
+                    body: SubroutineBody(vec![], vec![Statement::Return(Some(Term::Variable("y").into()))])
+                }
+            ]
+        } => [
+            Function("Data.get_y", 0),
+            Stack(Push(This, 1)),
+            Return,
+        ];
     }
 
     compiler_tests! {
