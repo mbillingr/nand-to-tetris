@@ -1,5 +1,7 @@
 class Math {
 
+    static int div_last_r;
+
     function int multiply(int x, int y) {
         var int sum, shiftedx, k;
         let sum = 0;
@@ -15,6 +17,24 @@ class Math {
         }
 
         return sum;
+    }
+
+    function int divide(int x, int y) {
+        var int q;
+
+        if (x < y) {
+            let div_last_r = x;
+            return 0;
+        }
+
+        let q = divide(x, y + y);
+
+        if (div_last_r < y) {
+            return q + q;
+        } else {
+            let div_last_r = div_last_r - y;
+            return q + q + 1;
+        }
     }
 
 }
