@@ -1,0 +1,20 @@
+class Math {
+
+    function int multiply(int x, int y) {
+        var int sum, shiftedx, k;
+        let sum = 0;
+        let shiftedx = x;
+        let k = 1;
+
+        while (k > 0) {
+            if ((y & k) = k) {
+                let sum = sum + shiftedx;
+            }
+            let shiftedx = shiftedx + shiftedx;
+            let k = k + k;
+        }
+
+        return sum;
+    }
+
+}
