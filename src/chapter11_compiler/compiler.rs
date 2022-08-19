@@ -242,7 +242,10 @@ impl<'s> Compiler<'s> {
             Term::Call(SubroutineCall::ThisCall(name, args)) => {
                 let n_args = args.len() as u16;
                 self.compile_args(args)?;
-                self.code.push(Command::Call(name, n_args));
+                // Rather evilly leak the string in order to create the fully qualified
+                // name with a lifetime that exceeds 's.
+                let full_name = Box::leak(format!("{}.{}", self.current_class, name).into_boxed_str());
+                self.code.push(Command::Call(full_name, n_args));
             }
             Term::Call(SubroutineCall::FullCall(cls_or_obj, name, args)) => {
                 let n_args = args.len() as u16;
@@ -472,7 +475,7 @@ mod tests {
     compiler_tests! {
         compile_statement:
         compile_return: Statement::Return(None) => [Stack(Push(Constant, 0)), Return];
-        compile_do: Statement::Do(SubroutineCall::ThisCall("foo", vec![])) => [Call("foo", 0), Stack(Pop(Temp, 0))];
+        compile_do: Statement::Do(SubroutineCall::ThisCall("foo", vec![])) => [Call("<NO CLASS>.foo", 0), Stack(Pop(Temp, 0))];
         compile_if: Statement::If(Term::False.into(), vec![Statement::Return(Some(1.into()))], vec![Statement::Return(Some(2.into()))]) => [
             Stack(Push(Constant, 0)),
             IfGoto("IF-TRUE-1"),
@@ -534,9 +537,9 @@ mod tests {
         compile_exp: Term::expression(Expression::op('+', 1, 2)) =>  [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Stack(Arithmetic(Add))];
         compile_neg: Term::neg(Term::integer(2)) => [Stack(Push(Constant, 2)), Stack(Arithmetic(Neg))];
         compile_not: Term::not(Term::False) => [Stack(Push(Constant, 0)), Stack(Arithmetic(Not))];
-        compile_call_func0: Term::Call(SubroutineCall::ThisCall("Foo.bar", vec![])) => [Call("Foo.bar", 0)];
-        compile_call_func1: Term::Call(SubroutineCall::ThisCall("Foo.bar", vec![1.into()])) => [Stack(Push(Constant, 1)), Call("Foo.bar", 1)];
-        compile_call_func2: Term::Call(SubroutineCall::ThisCall("Foo.bar", vec![1.into(), 2.into()])) => [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Call("Foo.bar", 2)];
+        compile_call_func0: Term::Call(SubroutineCall::ThisCall("foo", vec![])) => [Call("<NO CLASS>.foo", 0)];
+        compile_call_func1: Term::Call(SubroutineCall::ThisCall("foo", vec![1.into()])) => [Stack(Push(Constant, 1)), Call("<NO CLASS>.foo", 1)];
+        compile_call_func2: Term::Call(SubroutineCall::ThisCall("foo", vec![1.into(), 2.into()])) => [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Call("<NO CLASS>.foo", 2)];
     }
 
     #[test]
@@ -621,6 +624,16 @@ mod tests {
         let mut compiler = Compiler::new();
         compiler
             .compile_term(Term::Call(SubroutineCall::FullCall("Foo", "bar", vec![])))
+            .unwrap();
+        assert_eq!(compiler.code(), [Call("Foo.bar", 0)]);
+    }
+
+    #[test]
+    fn compile_call_local_function() {
+        let mut compiler = Compiler::new();
+        compiler.set_classname("Foo");
+        compiler
+            .compile_term(Term::Call(SubroutineCall::ThisCall("bar", vec![])))
             .unwrap();
         assert_eq!(compiler.code(), [Call("Foo.bar", 0)]);
     }
