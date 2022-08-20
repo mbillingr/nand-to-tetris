@@ -1,0 +1,20 @@
+class Memory {
+    function int peek(int address) {
+        var Array memory;
+        let memory = 0;
+        return memory[address];
+    }
+
+    function void poke(int address, int value) {
+        var Array memory;
+        let memory = 0;
+        let memory[address] = value;
+        return;
+    }
+
+    function int test_peekpoke() {
+        if (peek(1000) > 0) { return peek(1000); }
+        do poke(1000, 123);
+        return peek(1000);
+    }
+}

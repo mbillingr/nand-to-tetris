@@ -8,6 +8,8 @@ use std::fs;
 
 #[cfg(test)]
 mod test_math;
+#[cfg(test)]
+mod test_memory;
 
 pub fn eval(modules: &[&str], func: &str, args: &[u16]) -> Result<u16, String> {
     let mut asm = String::new();
