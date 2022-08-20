@@ -37,4 +37,26 @@ class Math {
         }
     }
 
+    function int sqrt(int x) {
+        var int y, tpj, z, zz;
+        let y = 0;
+        let tpj = 128;
+
+        while (tpj > 0) {
+            let z = y + tpj;
+            let zz = z * z;
+
+            if (zz = x) {
+                return z;
+            }
+
+            if (zz < x) {
+                let y = z;
+            }
+
+            let tpj = tpj / 2;
+        }
+
+    }
+
 }
