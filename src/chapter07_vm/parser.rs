@@ -2,14 +2,14 @@ use crate::chapter06_assembler::parser::FromStrNocopy;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Command {
     Arithmetic(ArithmeticCmd),
     Push(Segment, u16),
     Pop(Segment, u16),
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum ArithmeticCmd {
     Add,
     Sub,
@@ -22,7 +22,7 @@ pub enum ArithmeticCmd {
     Not,
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum Segment {
     Argument,
     Local,

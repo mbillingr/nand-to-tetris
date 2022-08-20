@@ -23,12 +23,8 @@ fn main() -> Result<(), String> {
 
     for input_file in input_files {
         let buffer = fs::read_to_string(&input_file).map_err(|e| e.to_string())?;
-        let lexer = JackTokenizer::new(&buffer);
 
-        let parse_tree = parser::class(lexer).map_err(|e| format!("{:?}", e))?.0;
-
-        let mut compiler = Compiler::new();
-        compiler.compile_class(parse_tree)?;
+        let compiler = Compiler::compile_source(&buffer)?;
 
         let output_file = input_file.with_extension("vm");
         println!("writing output to {:?}", output_file);

@@ -2,7 +2,7 @@ use crate::chapter06_assembler::parser::FromStrNocopy;
 use crate::chapter07_vm::parser::Command as StackCmd;
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, Copy, Clone, PartialEq)]
 pub enum Command<'s> {
     Stack(StackCmd),
     Label(&'s str),

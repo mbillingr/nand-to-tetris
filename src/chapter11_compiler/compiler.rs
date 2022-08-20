@@ -1,11 +1,15 @@
 use crate::chapter07_vm::parser::Segment::{Constant, Pointer};
 use crate::chapter07_vm::parser::{ArithmeticCmd, Command as StackCmd, Segment};
 use crate::chapter08_vm::parser::Command;
+use crate::chapter10_parser::parser;
 use crate::chapter10_parser::parser::{
     Class, ClassVarDec, Expression, Statement, SubroutineCall, SubroutineDec, SubroutineKind, Term,
     Type,
 };
+use crate::chapter10_parser::tokenizer::JackTokenizer;
 use crate::chapter11_compiler::symbol_table::{self, Entry, SymbolTable, VarKind};
+use std::fs;
+use std::path::Path;
 
 pub struct Compiler<'s> {
     code: Vec<Command<'s>>,
@@ -24,6 +28,17 @@ impl<'s> Compiler<'s> {
             label_counter: 0,
             current_class: "<NO CLASS>",
         }
+    }
+
+    pub fn compile_source(source: &'s str) -> Result<Self, String> {
+        let lexer = JackTokenizer::new(source);
+
+        let parse_tree = parser::class(lexer).map_err(|e| format!("{:?}", e))?.0;
+
+        let mut compiler = Compiler::new();
+        compiler.compile_class(parse_tree)?;
+
+        Ok(compiler)
     }
 
     pub fn set_classname(&mut self, name: &'s str) {
@@ -244,7 +259,8 @@ impl<'s> Compiler<'s> {
                 self.compile_args(args)?;
                 // Rather evilly leak the string in order to create the fully qualified
                 // name with a lifetime that exceeds 's.
-                let full_name = Box::leak(format!("{}.{}", self.current_class, name).into_boxed_str());
+                let full_name =
+                    Box::leak(format!("{}.{}", self.current_class, name).into_boxed_str());
                 self.code.push(Command::Call(full_name, n_args));
             }
             Term::Call(SubroutineCall::FullCall(cls_or_obj, name, args)) => {
