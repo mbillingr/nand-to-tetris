@@ -60,4 +60,20 @@ class Math {
         return y;
     }
 
+    function int min(int x, int y) {
+        if (x < y) {
+            return x;
+        } else {
+            return y;
+        }
+    }
+
+    function int max(int x, int y) {
+        if (x > y) {
+            return x;
+        } else {
+            return y;
+        }
+    }
+
 }

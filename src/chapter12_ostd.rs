@@ -110,4 +110,18 @@ mod tests {
         assert_eq!(eval(&["std/Math.jack"], "Math.sqrt", &[10000]), Ok(100));
         assert_eq!(eval(&["std/Math.jack"], "Math.sqrt", &[16384]), Ok(128));
     }
+
+    #[test]
+    fn test_min() {
+        assert_eq!(eval(&["std/Math.jack"], "Math.min", &[0, 0]), Ok(0));
+        assert_eq!(eval(&["std/Math.jack"], "Math.min", &[1, 2]), Ok(1));
+        assert_eq!(eval(&["std/Math.jack"], "Math.min", &[3, 2]), Ok(2));
+    }
+
+    #[test]
+    fn test_max() {
+        assert_eq!(eval(&["std/Math.jack"], "Math.max", &[0, 0]), Ok(0));
+        assert_eq!(eval(&["std/Math.jack"], "Math.max", &[1, 2]), Ok(2));
+        assert_eq!(eval(&["std/Math.jack"], "Math.max", &[3, 2]), Ok(3));
+    }
 }
