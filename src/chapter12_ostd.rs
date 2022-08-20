@@ -74,4 +74,26 @@ mod tests {
             Ok(256)
         );
     }
+
+    #[test]
+    fn test_divide() {
+        assert_eq!(eval(&["std/Math.jack"], "Math.divide", &[0, 1]), Ok(0));
+        assert_eq!(eval(&["std/Math.jack"], "Math.divide", &[1, 1]), Ok(1));
+        assert_eq!(eval(&["std/Math.jack"], "Math.divide", &[2, 1]), Ok(2));
+        assert_eq!(eval(&["std/Math.jack"], "Math.divide", &[2, 2]), Ok(1));
+        assert_eq!(eval(&["std/Math.jack"], "Math.divide", &[3, 2]), Ok(1));
+        assert_eq!(eval(&["std/Math.jack"], "Math.divide", &[4, 2]), Ok(2));
+        assert_eq!(
+            eval(&["std/Math.jack"], "Math.divide", &[1234, 9]),
+            Ok(1234 / 9)
+        );
+        assert_eq!(
+            eval(&["std/Math.jack"], "Math.divide", &[1230, 10]),
+            Ok(123)
+        );
+        assert_eq!(
+            eval(&["std/Math.jack"], "Math.divide", &[12305, 10]),
+            Ok(1230)
+        );
+    }
 }
