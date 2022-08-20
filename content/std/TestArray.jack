@@ -1,0 +1,28 @@
+class TestArray {
+    function int test_array() {
+        var Array arr;
+
+        let arr = Array.new(3);
+
+        let arr[0] = 1;
+        let arr[1] = 2;
+        let arr[2] = 3;
+
+        return (arr[0] + arr[1] + arr[2]) - 6;
+    }
+
+    function int test_dispose() {
+        var Array arr;
+        var int segment_ptr;
+
+        let arr = Array.new(1000);
+        do arr.dispose();
+
+        let segment_ptr = Memory.peek(Memory._get_freelist() + 1);
+
+        // the 1000+1 words of the array were returned to the free list
+        if (Memory.peek(segment_ptr) = 1001) {} else { return Memory.peek(segment_ptr); }
+
+        return 0;
+    }
+}
