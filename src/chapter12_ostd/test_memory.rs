@@ -40,3 +40,11 @@ fn test_alloc() {
         Ok(0)
     );
 }
+
+#[test]
+fn test_dealloc() {
+    assert_eq!(
+        eval(&["std/TestMemory"], "TestMemory.test_dealloc", &[]),
+        Ok(0)
+    );
+}

@@ -20,6 +20,14 @@ class Memory {
         return;
     }
 
+    function void deAlloc(int obj_ptr) {
+        var int first_segment;
+        let first_segment = peek(freeList + 1);
+        do poke(obj_ptr, first_segment);
+        do poke(freeList + 1, obj_ptr - 1);
+        return;
+    }
+
     function int alloc(int size) {
         var int block, parent_ptr;
         var int segment_ptr, segment_size;
