@@ -96,4 +96,18 @@ mod tests {
             Ok(1230)
         );
     }
+
+    #[test]
+    fn test_sqrt() {
+        assert_eq!(eval(&["std/Math.jack"], "Math.sqrt", &[0]), Ok(0));
+        assert_eq!(eval(&["std/Math.jack"], "Math.sqrt", &[2]), Ok(1));
+        assert_eq!(eval(&["std/Math.jack"], "Math.sqrt", &[3]), Ok(1));
+        assert_eq!(eval(&["std/Math.jack"], "Math.sqrt", &[4]), Ok(2));
+        assert_eq!(eval(&["std/Math.jack"], "Math.sqrt", &[9]), Ok(3));
+        assert_eq!(eval(&["std/Math.jack"], "Math.sqrt", &[15]), Ok(3));
+        assert_eq!(eval(&["std/Math.jack"], "Math.sqrt", &[16]), Ok(4));
+        assert_eq!(eval(&["std/Math.jack"], "Math.sqrt", &[17]), Ok(4));
+        assert_eq!(eval(&["std/Math.jack"], "Math.sqrt", &[10000]), Ok(100));
+        assert_eq!(eval(&["std/Math.jack"], "Math.sqrt", &[16384]), Ok(128));
+    }
 }

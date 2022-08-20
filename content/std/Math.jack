@@ -57,6 +57,7 @@ class Math {
             let tpj = tpj / 2;
         }
 
+        return y;
     }
 
 }
