@@ -9,7 +9,7 @@ pub mod chapter07_vm;
 pub mod chapter08_vm;
 pub mod chapter10_parser;
 pub mod chapter11_compiler;
-mod chapter12_ostd;
+pub mod chapter12_ostd;
 pub mod computer_emulator;
 pub mod file_utils;
 
