@@ -3,8 +3,6 @@ use nand_to_tetris::chapter08_vm::parser::Command;
 Read vm code from a file or directory (multiple .vm files)
 and write unoptimized assembly code to stdout.
 **/
-use nand_to_tetris::chapter10_parser::parser;
-use nand_to_tetris::chapter10_parser::tokenizer::JackTokenizer;
 use nand_to_tetris::chapter11_compiler::compiler::Compiler;
 use nand_to_tetris::file_utils::file_or_files_in_dir;
 use std::env;

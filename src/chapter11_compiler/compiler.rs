@@ -8,8 +8,6 @@ use crate::chapter10_parser::parser::{
 };
 use crate::chapter10_parser::tokenizer::JackTokenizer;
 use crate::chapter11_compiler::symbol_table::{self, Entry, SymbolTable, VarKind};
-use std::fs;
-use std::path::Path;
 
 pub struct Compiler<'s> {
     code: Vec<Command<'s>>,
