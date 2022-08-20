@@ -55,7 +55,7 @@ impl<'s> Compiler<'s> {
     }
 
     pub fn compile_class(&mut self, cls: Class<'s>) -> Result<(), String> {
-        println!("compiling class {}", cls.name);
+        //println!("compiling class {}", cls.name);
         self.set_classname(cls.name);
         self.class_symbols.reset();
         self.function_symbols.reset();
@@ -78,7 +78,7 @@ impl<'s> Compiler<'s> {
     }
 
     fn compile_subroutine(&mut self, subr: SubroutineDec<'s>) -> Result<(), String> {
-        println!("compiling subroutine {}", subr.name);
+        //println!("compiling subroutine {}", subr.name);
         self.function_symbols.reset();
         if subr.kind == SubroutineKind::Method {
             self.function_symbols
@@ -126,7 +126,7 @@ impl<'s> Compiler<'s> {
     }
 
     fn compile_statement(&mut self, stmt: Statement<'s>) -> Result<(), String> {
-        println!("compiling statement {:?}", stmt);
+        //println!("compiling statement {:?}", stmt);
         match stmt {
             Statement::Return(None) => {
                 self.compile_statement(Statement::Return(Some(Expression::Term(Term::Null))))?

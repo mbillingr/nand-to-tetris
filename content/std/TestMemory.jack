@@ -7,15 +7,41 @@ class TestMemory {
         return Memory.peek(1000);
     }
 
-    function int test_alloc() {
+    function int test_alloc_partial_segment() {
         var int x, y, z;
+        var int fl;
 
+        // create one big free heap segment,
+        // so allocation happens from the segment end downward.
+        do Memory._init_heap(5000, 6000);
+
+        // allocation reserves one extra word for the block size.
         let x = Memory.alloc(10);
-        let y = Memory.alloc(0);
-        let z = Memory.alloc(0);
+        let y = Memory.alloc(20);
+        let z = Memory.alloc(30);
 
-        if ((y - x) = 10) {} else { return 1000 + y - x; }
-        if ((x - z) = 0) {} else { return 2000 + y - z; }
+        if ((x - y) = (20+1)) {} else { return 1000 + (x - y); }
+        if ((y - z) = (30+1)) {} else { return 2000 + (y - z); }
+        return 0;
+    }
+
+    function int test_alloc_exact_segment() {
+        var int x, y, z;
+        var int fl;
+
+        // there are smaller heap segments exactly matching the allocated sizes.
+        // allocation is supposed to use those.
+
+        do Memory._init_heap(5000, 6000);
+        do Memory._cons_heap_segment(6000, 6011);
+        do Memory._cons_heap_segment(6100, 6121);
+        do Memory._cons_heap_segment(6200, 6300);
+
+        let y = Memory.alloc(20);
+        let x = Memory.alloc(10);
+
+        if (x = 6001) {} else { return x; }
+        if (y = 6101) {} else { return y; }
         return 0;
     }
 }

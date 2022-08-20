@@ -2,10 +2,8 @@ class Memory {
     static int freeList;
 
     function void init() {
-        /* Initialize heap to one free block starting after the stack at 2048,
-           and ending before the screen memory at 16384. */
-        let freeList = 2048;
-        do poke(freeList, 14336);
+        /* Initialize heap between the stack at 2048 and screen memory at 16384. */
+        do _init_heap(2048, 16384);
         return;
     }
 
@@ -23,10 +21,104 @@ class Memory {
     }
 
     function int alloc(int size) {
-        return 2049;
+        var int block, parent_ptr;
+        var int segment_ptr, segment_size;
+
+        let size = size + 1;
+
+        let parent_ptr = _find_best_segment(size);
+
+        let segment_ptr = peek(parent_ptr);
+        let segment_size = peek(segment_ptr);
+
+        if (segment_size = size) {
+            return _alloc_exact(parent_ptr, segment_ptr);
+        } else {
+            return _alloc_part(segment_ptr, size);
+        }
+    }
+
+    function int _alloc_exact(int parent_ptr, int segment_ptr) {
+        var int next_segment_ptr;
+        let next_segment_ptr = peek(segment_ptr + 1);
+        do poke(parent_ptr, next_segment_ptr);
+        return segment_ptr + 1;
+    }
+
+    function int _alloc_part(int segment_ptr, int size) {
+        var int block_ptr, segment_size;
+
+        let segment_size = peek(segment_ptr);
+        do poke(segment_ptr, segment_size - size);
+
+        let block_ptr = segment_ptr + segment_size - size;
+        do poke(block_ptr, size);
+
+        return block_ptr + 1;
+    }
+
+    function int _find_best_segment(int size) {
+        var int best_parent, best_size;
+        var int segment_ptr, segment_size, parent_ptr;
+
+        let best_parent = 0;
+        let best_size = 32767;
+
+        let parent_ptr = freeList + 1;
+        let segment_ptr = peek(parent_ptr);
+
+        while (segment_ptr > 0) {
+            let segment_size = peek(segment_ptr);
+
+            if (segment_size = size) {
+                // found a perfectly matching segment
+                return parent_ptr;
+            }
+
+            if (segment_size > size) {
+                if (segment_size < best_size) {
+                    let best_parent = parent_ptr;
+                    let best_size = segment_size;
+                }
+            }
+
+            let parent_ptr = segment_ptr + 1;
+            let segment_ptr = peek(parent_ptr);
+        }
+
+        return best_parent;
     }
 
     function int _get_freelist() {
         return freeList;
+    }
+
+    function void _set_freelist(int addr) {
+        let freeList = addr;
+        return;
+    }
+
+    function void _init_heap(int start_addr, int end_addr) {
+        /* Initialize heap to a single free block in given address range.
+           Also insert a dummy segment of size 0 at the start of the heap. (To allow manipulating
+           the linked list of segments without knowing the address of freeList.) */
+        let freeList = start_addr;
+        do poke(freeList, 0);
+        do poke(freeList + 1, freeList + 2);
+        do poke(freeList + 2, end_addr - (start_addr + 2));
+        do poke(freeList + 3, 0);
+        return;
+    }
+
+    function void _cons_heap_segment(int start_addr, int end_addr) {
+        /* Prepend a heap segment to the linked list of free segments.
+           (insert it after the first empty dummy segment)
+         */
+         var int first_segment;
+         let first_segment = peek(freeList + 1);
+         do poke(start_addr, end_addr - start_addr);
+         do poke(start_addr + 1, first_segment);
+         do poke(freeList + 1, start_addr);
+         return;
     }
 }
