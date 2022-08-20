@@ -16,8 +16,9 @@ pub fn eval(modules: &[&str], func: &str, args: &[u16]) -> Result<u16, String> {
     let mut code_gen = CodeGenerator::new("VM");
     asm += &code_gen.gen_bootstrap();
 
-    for module in modules {
-        let buffer = fs::read_to_string(format!("content/{module}")).map_err(|e| e.to_string())?;
+    for module in ["std/Sys", "std/Memory", "std/Math"].iter().chain(modules) {
+        let buffer =
+            fs::read_to_string(format!("content/{module}.jack")).map_err(|e| e.to_string())?;
         let compiler = Compiler::compile_source(&buffer)?;
 
         let mod_name = module
@@ -32,7 +33,7 @@ pub fn eval(modules: &[&str], func: &str, args: &[u16]) -> Result<u16, String> {
         asm += &code_gen.translate(compiler.code().iter().copied().map(Ok))?;
     }
 
-    let mut init = vec![Command::Function("Sys.init", 0)];
+    let mut init = vec![Command::Function("Main.main", 0)];
 
     for arg in args {
         init.push(Command::Stack(StackCmd::Push(Segment::Constant, *arg)));

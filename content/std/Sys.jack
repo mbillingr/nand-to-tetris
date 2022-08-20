@@ -1,0 +1,7 @@
+class Sys {
+    function void init() {
+        do Memory.init();
+        do Main.main();
+        return;
+    }
+}

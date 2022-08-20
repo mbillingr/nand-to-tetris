@@ -1,0 +1,21 @@
+class TestMemory {
+    function int test_peekpoke() {
+        if (Memory.peek(1000) > 0) {
+            return 1;
+        }
+        do Memory.poke(1000, 123);
+        return Memory.peek(1000);
+    }
+
+    function int test_alloc() {
+        var int x, y, z;
+
+        let x = Memory.alloc(10);
+        let y = Memory.alloc(0);
+        let z = Memory.alloc(0);
+
+        if ((y - x) = 10) {} else { return 1000 + y - x; }
+        if ((x - z) = 0) {} else { return 2000 + y - z; }
+        return 0;
+    }
+}

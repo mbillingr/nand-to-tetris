@@ -1,4 +1,14 @@
 class Memory {
+    static int freeList;
+
+    function void init() {
+        /* Initialize heap to one free block starting after the stack at 2048,
+           and ending before the screen memory at 16384. */
+        let freeList = 2048;
+        do poke(freeList, 14336);
+        return;
+    }
+
     function int peek(int address) {
         var Array memory;
         let memory = 0;
@@ -12,9 +22,11 @@ class Memory {
         return;
     }
 
-    function int test_peekpoke() {
-        if (peek(1000) > 0) { return peek(1000); }
-        do poke(1000, 123);
-        return peek(1000);
+    function int alloc(int size) {
+        return 2049;
+    }
+
+    function int _get_freelist() {
+        return freeList;
     }
 }
