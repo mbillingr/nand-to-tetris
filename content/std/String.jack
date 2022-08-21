@@ -1,0 +1,61 @@
+class String {
+    constructor String new(int maxLength) {
+        // todo
+        return this;
+    }
+
+    method void dispose() {
+        // todo
+        return;
+    }
+
+    method int length() {
+        // todo
+        return 0;
+    }
+
+    method char charAt(int i) {
+        // todo
+        return 0;
+    }
+
+    method void setChar(int i, char c) {
+        // todo
+        return;
+    }
+
+    method void appendChar(char c) {
+        // todo
+        return;
+    }
+
+    method void eraseLastChar() {
+        // todo
+        return;
+    }
+
+    method int value() {
+        // todo - return integer value of string until first non-digit character
+        return 0;
+    }
+
+    method void setInt(int val) {
+        // todo - set this string to hold decimal representation of the integer
+        return ;
+    }
+
+    function char backSpace() {
+        // todo - return backspace character
+        return 0;
+    }
+
+    function char doubleQuote() {
+        // todo - return " character
+        return 0;
+    }
+
+    function char newLine() {
+        // todo - return newline character
+        return 0;
+    }
+}
