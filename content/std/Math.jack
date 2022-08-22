@@ -27,7 +27,7 @@ class Math {
             return 0;
         }
 
-        let q = divide(x, y + y);
+        let q = Math.divide(x, y + y);
 
         if (div_last_r < y) {
             return q + q;

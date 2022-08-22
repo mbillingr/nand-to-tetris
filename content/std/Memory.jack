@@ -3,7 +3,7 @@ class Memory {
 
     function void init() {
         /* Initialize heap between the stack at 2048 and screen memory at 16384. */
-        do _init_heap(2048, 16384);
+        do Memory._init_heap(2048, 16384);
         return;
     }
 
@@ -22,9 +22,9 @@ class Memory {
 
     function void deAlloc(int obj_ptr) {
         var int first_segment;
-        let first_segment = peek(freeList + 1);
-        do poke(obj_ptr, first_segment);
-        do poke(freeList + 1, obj_ptr - 1);
+        let first_segment = Memory.peek(freeList + 1);
+        do Memory.poke(obj_ptr, first_segment);
+        do Memory.poke(freeList + 1, obj_ptr - 1);
         return;
     }
 
@@ -34,33 +34,33 @@ class Memory {
 
         let size = size + 1;
 
-        let parent_ptr = _find_best_segment(size);
+        let parent_ptr = Memory._find_best_segment(size);
 
-        let segment_ptr = peek(parent_ptr);
-        let segment_size = peek(segment_ptr);
+        let segment_ptr = Memory.peek(parent_ptr);
+        let segment_size = Memory.peek(segment_ptr);
 
         if (segment_size = size) {
-            return _alloc_exact(parent_ptr, segment_ptr);
+            return Memory._alloc_exact(parent_ptr, segment_ptr);
         } else {
-            return _alloc_part(segment_ptr, size);
+            return Memory._alloc_part(segment_ptr, size);
         }
     }
 
     function int _alloc_exact(int parent_ptr, int segment_ptr) {
         var int next_segment_ptr;
-        let next_segment_ptr = peek(segment_ptr + 1);
-        do poke(parent_ptr, next_segment_ptr);
+        let next_segment_ptr = Memory.peek(segment_ptr + 1);
+        do Memory.poke(parent_ptr, next_segment_ptr);
         return segment_ptr + 1;
     }
 
     function int _alloc_part(int segment_ptr, int size) {
         var int block_ptr, segment_size;
 
-        let segment_size = peek(segment_ptr);
-        do poke(segment_ptr, segment_size - size);
+        let segment_size = Memory.peek(segment_ptr);
+        do Memory.poke(segment_ptr, segment_size - size);
 
         let block_ptr = segment_ptr + segment_size - size;
-        do poke(block_ptr, size);
+        do Memory.poke(block_ptr, size);
 
         return block_ptr + 1;
     }
@@ -73,10 +73,10 @@ class Memory {
         let best_size = 32767;
 
         let parent_ptr = freeList + 1;
-        let segment_ptr = peek(parent_ptr);
+        let segment_ptr = Memory.peek(parent_ptr);
 
         while (segment_ptr > 0) {
-            let segment_size = peek(segment_ptr);
+            let segment_size = Memory.peek(segment_ptr);
 
             if (segment_size = size) {
                 // found a perfectly matching segment
@@ -91,7 +91,7 @@ class Memory {
             }
 
             let parent_ptr = segment_ptr + 1;
-            let segment_ptr = peek(parent_ptr);
+            let segment_ptr = Memory.peek(parent_ptr);
         }
 
         return best_parent;
@@ -111,10 +111,10 @@ class Memory {
            Also insert a dummy segment of size 0 at the start of the heap. (To allow manipulating
            the linked list of segments without knowing the address of freeList.) */
         let freeList = start_addr;
-        do poke(freeList, 0);
-        do poke(freeList + 1, freeList + 2);
-        do poke(freeList + 2, end_addr - (start_addr + 2));
-        do poke(freeList + 3, 0);
+        do Memory.poke(freeList, 0);
+        do Memory.poke(freeList + 1, freeList + 2);
+        do Memory.poke(freeList + 2, end_addr - (start_addr + 2));
+        do Memory.poke(freeList + 3, 0);
         return;
     }
 
@@ -123,10 +123,10 @@ class Memory {
            (insert it after the first empty dummy segment)
          */
          var int first_segment;
-         let first_segment = peek(freeList + 1);
-         do poke(start_addr, end_addr - start_addr);
-         do poke(start_addr + 1, first_segment);
-         do poke(freeList + 1, start_addr);
+         let first_segment = Memory.peek(freeList + 1);
+         do Memory.poke(start_addr, end_addr - start_addr);
+         do Memory.poke(start_addr + 1, first_segment);
+         do Memory.poke(freeList + 1, start_addr);
          return;
     }
 }
