@@ -12,15 +12,23 @@ mod test_arrayy;
 mod test_math;
 #[cfg(test)]
 mod test_memory;
+#[cfg(test)]
+mod test_string;
 
 pub fn eval(modules: &[&str], func: &str, args: &[u16]) -> Result<u16, String> {
     let mut asm = String::new();
     let mut code_gen = CodeGenerator::new("VM");
     asm += &code_gen.gen_bootstrap();
 
-    for module in ["std/Sys", "std/Array", "std/Math", "std/Memory"]
-        .iter()
-        .chain(modules)
+    for module in [
+        "std/Sys",
+        "std/Array",
+        "std/Math",
+        "std/Memory",
+        "std/String",
+    ]
+    .iter()
+    .chain(modules)
     {
         let buffer =
             fs::read_to_string(format!("content/{module}.jack")).map_err(|e| e.to_string())?;

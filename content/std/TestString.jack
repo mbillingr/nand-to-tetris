@@ -1,0 +1,167 @@
+class TestString {
+    function void test_new_string_has_zero_length() {
+        var String s;
+        let s = String.new(5);
+        return s.length();
+    }
+
+    function void test_appending_characters_increases_length() {
+        var String s;
+        let s = String.new(5);
+
+        do s.appendChar(65);
+        if (s.length() = 1) { } else { return 100 + s.length(); }
+
+        do s.appendChar(42);
+        if (s.length() = 2) { } else { return 200 + s.length(); }
+
+        return 0;
+    }
+
+    function void test_erasing_characters_decreases_length() {
+        var String s;
+        let s = String.new(5);
+        do s.appendChar(65);
+        do s.appendChar(42);
+
+        do s.eraseLastChar();
+        if (s.length() = 1) { } else { return 100 + s.length(); }
+
+        do s.eraseLastChar();
+        return s.length();
+    }
+
+    function void test_can_get_characters_after_appending() {
+        var String s;
+        let s = String.new(5);
+
+        do s.appendChar(65);
+        if (s.charAt(0) = 65) { } else { return 100 + s.charAt(0); }
+
+        do s.appendChar(42);
+        if (s.charAt(1) = 42) { } else { return 200 + s.charAt(1); }
+
+        return 0;
+    }
+
+    function void test_can_get_characters_from_literal_string() {
+        var String s;
+        let s = "ABZ";
+
+        if (s.charAt(0) = 65) { } else { return 100 + s.charAt(0); }
+        if (s.charAt(1) = 66) { } else { return 200 + s.charAt(1); }
+        if (s.charAt(2) = 90) { } else { return 300 + s.charAt(2); }
+
+        return 0;
+    }
+
+    function void test_can_set_characters() {
+        var String s;
+        let s = String.new(5);
+        do s.appendChar(0);
+        do s.appendChar(0);
+
+        do s.setChar(0, 42);
+        if (s.charAt(0) = 42) { } else { return 100 + s.charAt(0); }
+
+        do s.setChar(1, 66);
+        if (s.charAt(1) = 66) { } else { return 200 + s.charAt(1); }
+
+        return 0;
+    }
+
+    function void test_get_max_length() {
+        var String s;
+        let s = String.new(3);
+        if (s.maxLength() = 3) {
+            return 0;
+        } else {
+            return 100 + s.maxLength();
+        }
+    }
+
+    function void test_resizing_changes_max_length() {
+        var String s;
+        let s = String.new(3);
+
+        do s.resize(42);
+
+        if (s.maxLength() = 42) {
+            return 0;
+        } else {
+            return 100 + s.maxLength();
+        }
+    }
+
+    function void test_appending_beyond_max_length_grows_the_string() {
+        var String s;
+        let s = String.new(3);
+        do s.appendChar(65);
+        do s.appendChar(65);
+        do s.appendChar(65);
+
+        do s.appendChar(65);
+
+        if (s.maxLength() = 6) {
+            return 0;
+        } else {
+            return 100 + s.maxLength();
+        }
+    }
+
+    function void test_growing_preserves_content() {
+        var String s;
+        let s = String.new(3);
+        do s.appendChar(65);
+        do s.appendChar(66);
+        do s.appendChar(67);
+
+        do s.resize(10);
+
+        if (s.length() = 3) { } else { return s.length(); }
+        if (s.charAt(0) = 65) { } else { return 100 + s.charAt(0); }
+        if (s.charAt(1) = 66) { } else { return 200 + s.charAt(1); }
+        if (s.charAt(2) = 67) { } else { return 300 + s.charAt(2); }
+        return 0;
+    }
+
+    function void test_shrinking_truncates_content() {
+        var String s;
+        let s = String.new(3);
+        do s.appendChar(65);
+        do s.appendChar(66);
+        do s.appendChar(67);
+
+        do s.resize(1);
+
+        if (s.length() = 1) { } else { return s.length(); }
+        if (s.charAt(0) = 65) { } else { return 100 + s.charAt(0); }
+        return 0;
+    }
+
+    function void test_str_to_int() {
+        var String s;
+        let s = "02580xyz";
+
+        if (s.value() = 2580) {
+            return 0;
+        } else {
+            return 10000 + s.value();
+        }
+    }
+
+    function void test_int_to_str() {
+        var String s;
+        let s = String.new(0);
+
+        do s.setInt(9510);
+
+        if (s.length() = 4) { } else { return s.length(); }
+        if (s.charAt(0) = 57) { } else { return 100 + s.charAt(0); }
+        if (s.charAt(1) = 53) { } else { return 200 + s.charAt(1); }
+        if (s.charAt(2) = 49) { } else { return 300 + s.charAt(2); }
+        if (s.charAt(3) = 48) { } else { return 400 + s.charAt(3); }
+
+        return 0;
+    }
+}

@@ -1,61 +1,121 @@
 class String {
+    field int len;
+    field Array data;
+
     constructor String new(int maxLength) {
-        // todo
+        let len = 0;
+        let data = Array.new(maxLength);
         return this;
     }
 
     method void dispose() {
-        // todo
+        do data.dispose();
+        do Memory.deAlloc(this);
         return;
     }
 
     method int length() {
-        // todo
-        return 0;
+        return len;
+    }
+
+    method int maxLength() {
+        return Memory.peek(data - 1) - 1;
+    }
+
+    method void resize(int newMaxLength) {
+        var Array old_data;
+        var int i;
+
+        let old_data = data;
+        let data = Array.new(newMaxLength);
+
+        let len = Math.min(len, newMaxLength);
+        let i = 0;
+        while (i < len) {
+            let data[i] = old_data[i];
+            let i = i + 1;
+        }
+
+        do old_data.dispose();
+        return;
     }
 
     method char charAt(int i) {
-        // todo
-        return 0;
+        return data[i];
     }
 
     method void setChar(int i, char c) {
-        // todo
+        let data[i] = c;
         return;
     }
 
-    method void appendChar(char c) {
-        // todo
-        return;
+    method String appendChar(char c) {
+        if (len = maxLength()) {
+            do resize(Math.max(1, len + len));
+            return;
+        }
+        let data[len] = c;
+        let len = len + 1;
+        return this;
     }
 
     method void eraseLastChar() {
-        // todo
+        let len = len - 1;
         return;
     }
 
     method int value() {
-        // todo - return integer value of string until first non-digit character
-        return 0;
+        var int val, i, ch;
+        let val = 0;
+        let i = 0;
+        while (i < len) {
+            let ch = data[i];
+            if ((ch < 48) | (ch > 57)) {
+                return val;
+            }
+            let val = (val * 10) + (ch - 48);
+            let i = i + 1;
+        }
+        return val;
     }
 
     method void setInt(int val) {
-        // todo - set this string to hold decimal representation of the integer
-        return ;
+        var int smaller, rem;
+        do resize(5);
+        let len = 0;
+        while (val > 0) {
+            let smaller = val / 10;
+            do appendChar(48 + (val - (smaller * 10)));
+            let val = smaller;
+        }
+        return reverse();
+    }
+
+    method void reverse() {
+        var int i, j, tmp;
+        let i = 0;
+        let j = len - 1;
+
+        while (i < j) {
+            let tmp = data[i];
+            let data[i] = data[j];
+            let data[j] = tmp;
+
+            let i = i + 1;
+            let j = j - 1;
+        }
+        return;
     }
 
     function char backSpace() {
-        // todo - return backspace character
-        return 0;
+        return 129;
     }
 
     function char doubleQuote() {
-        // todo - return " character
-        return 0;
+        return 34;
     }
 
     function char newLine() {
-        // todo - return newline character
-        return 0;
+        return 128;
     }
 }

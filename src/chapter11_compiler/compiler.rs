@@ -224,7 +224,7 @@ impl<'s> Compiler<'s> {
                 for ch in s.bytes() {
                     self.code
                         .push(Command::Stack(StackCmd::Push(Constant, ch as u16)));
-                    self.code.push(Command::Call("String.appendChar", 1));
+                    self.code.push(Command::Call("String.appendChar", 2));
                 }
             }
             Term::Variable(name) => {
@@ -544,17 +544,17 @@ mod tests {
         compile_int0: Term::Integer(0) => [Stack(Push(Constant, 0))];
         compile_int1: Term::Integer(1) => [Stack(Push(Constant, 1))];
         compile_str0: Term::string("") => [Stack(Push(Constant, 0)), Call("String.new", 1)];
-        compile_str1: Term::string("a") => [Stack(Push(Constant, 1)), Call("String.new", 1), Stack(Push(Constant, 97)), Call("String.appendChar", 1)];
+        compile_str1: Term::string("a") => [Stack(Push(Constant, 1)), Call("String.new", 1), Stack(Push(Constant, 97)), Call("String.appendChar", 2)];
         compile_strx: Term::string("!*7=A_a~") => [
             Stack(Push(Constant, 8)), Call("String.new", 1),
-            Stack(Push(Constant, 33)), Call("String.appendChar", 1),
-            Stack(Push(Constant, 42)), Call("String.appendChar", 1),
-            Stack(Push(Constant, 55)), Call("String.appendChar", 1),
-            Stack(Push(Constant, 61)), Call("String.appendChar", 1),
-            Stack(Push(Constant, 65)), Call("String.appendChar", 1),
-            Stack(Push(Constant, 95)), Call("String.appendChar", 1),
-            Stack(Push(Constant, 97)), Call("String.appendChar", 1),
-            Stack(Push(Constant, 126)), Call("String.appendChar", 1),
+            Stack(Push(Constant, 33)), Call("String.appendChar", 2),
+            Stack(Push(Constant, 42)), Call("String.appendChar", 2),
+            Stack(Push(Constant, 55)), Call("String.appendChar", 2),
+            Stack(Push(Constant, 61)), Call("String.appendChar", 2),
+            Stack(Push(Constant, 65)), Call("String.appendChar", 2),
+            Stack(Push(Constant, 95)), Call("String.appendChar", 2),
+            Stack(Push(Constant, 97)), Call("String.appendChar", 2),
+            Stack(Push(Constant, 126)), Call("String.appendChar", 2),
         ];
         compile_exp: Term::expression(Expression::op('+', 1, 2)) =>  [Stack(Push(Constant, 1)), Stack(Push(Constant, 2)), Stack(Arithmetic(Add))];
         compile_neg: Term::neg(Term::integer(2)) => [Stack(Push(Constant, 2)), Stack(Arithmetic(Neg))];
@@ -625,7 +625,10 @@ mod tests {
         compiler
             .compile_term(Term::Call(SubroutineCall::ThisCall("bar", vec![])))
             .unwrap();
-        assert_eq!(compiler.code(), [Stack(Push(Pointer, 0)), Call("Foo.bar", 1)]);
+        assert_eq!(
+            compiler.code(),
+            [Stack(Push(Pointer, 0)), Call("Foo.bar", 1)]
+        );
     }
 
     #[test]
