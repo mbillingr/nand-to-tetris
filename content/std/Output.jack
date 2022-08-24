@@ -1,0 +1,23 @@
+class Output {
+    static int cursor;
+    static bool cursor_hi;
+
+    function void init() {
+        let cursor = 0;
+        let cursor_hi = false;
+        return;
+    }
+
+    function void advanceCursor() {
+        if (cursor_hi) {
+            let cursor = cursor + 1;
+        }
+        let cursor_hi = ~cursor_hi;
+        return;
+    }
+
+    function void moveCursorDown() {
+        // todo
+        return;
+    }
+}

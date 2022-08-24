@@ -1,0 +1,29 @@
+class Screen {
+    static Array screen;
+
+    function void init() {
+        let screen = 16384;
+        return;
+    }
+
+    function void setBlock16(int offset, int mask) {
+        let screen[offset] = mask;
+        return;
+    }
+
+    function int getBlock16(int offset) {
+        return screen[offset];
+    }
+
+    function void setBlock8lo(int offset, int mask) {
+        // screen & 0xFF00 + mask & 0x00FF
+        let screen[offset] = (screen[offset] & 65280) + (mask & 255);
+        return;
+    }
+
+    function void setBlock8hi(int offset, int mask) {
+        // screen & 0x00FF + mask << 8
+        let screen[offset] = (screen[offset] & 255) + (mask * 256);
+        return;
+    }
+}

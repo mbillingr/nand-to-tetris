@@ -25,6 +25,8 @@ pub fn eval(modules: &[&str], func: &str, args: &[u16]) -> Result<u16, String> {
         "std/Array",
         "std/Math",
         "std/Memory",
+        "std/Output",
+        "std/Screen",
         "std/String",
     ]
     .iter()

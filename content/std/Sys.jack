@@ -1,6 +1,8 @@
 class Sys {
     function void init() {
         do Memory.init();
+        do Screen.init();
+        do Output.init();
         do Main.main();
         return;
     }
