@@ -33,7 +33,7 @@ pub fn eval(modules: &[&str], func: &str, args: &[u16]) -> Result<u16, String> {
     .chain(modules)
     {
         let buffer =
-            fs::read_to_string(format!("content/{module}.jack")).map_err(|e| e.to_string())?;
+            fs::read_to_string(format!("content/jack/{module}.jack")).map_err(|e| e.to_string())?;
         let compiler = Compiler::compile_source(&buffer)?;
 
         let mod_name = module
