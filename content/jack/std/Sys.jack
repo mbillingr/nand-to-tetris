@@ -4,6 +4,7 @@ class Sys {
         do Screen.init();
         do Output.init();
         do Main.main();
+        while (true) { }
         return;
     }
 }

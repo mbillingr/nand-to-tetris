@@ -8,6 +8,34 @@ class Output {
         return;
     }
 
+    function void println() {
+        do Output.moveCursorDown();
+        do Output.moveCursorBeginning();
+        return;
+    }
+
+    function void printString(String s) {
+        var int i;
+        let i = 0;
+        while (i < s.length()) {
+            do Output.printChar(s.charAt(i));
+            let i = i + 1;
+        }
+        return;
+    }
+
+    function void printChar(char c) {
+        var int mem;
+        let mem = cursor;
+        if (cursor_hi) {
+            do Screen.setBlock8hi(mem, 127);
+        } else {
+            do Screen.setBlock8lo(mem, 127);
+        }
+        do Output.advanceCursor();
+        return;
+    }
+
     function void advanceCursor() {
         if (cursor_hi) {
             let cursor = cursor + 1;
@@ -17,7 +45,13 @@ class Output {
     }
 
     function void moveCursorDown() {
-        // todo
+        let cursor = cursor + (64 * 11);
+        return;
+    }
+
+    function void moveCursorBeginning() {
+        let cursor = (cursor / 64) * 64;
+        let cursor_hi = false;
         return;
     }
 }

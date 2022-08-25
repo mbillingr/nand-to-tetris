@@ -17,7 +17,7 @@ class Screen {
 
     function void setBlock8lo(int offset, int mask) {
         // screen & 0xFF00 + mask & 0x00FF
-        let screen[offset] = (screen[offset] & 65280) + (mask & 255);
+        let screen[offset] = (screen[offset] & (-256)) + (mask & 255);
         return;
     }
 
